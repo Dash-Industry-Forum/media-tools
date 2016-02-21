@@ -1,0 +1,310 @@
+/*
+# The copyright in this software is being made available under the BSD License,
+# included below. This software may be subject to other third party and contributor
+# rights, including patent rights, and no such rights are granted under this license.
+#
+# Copyright (c) 2016, Dash Industry Forum.
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without modification,
+# are permitted provided that the following conditions are met:
+#  * Redistributions of source code must retain the above copyright notice, this
+#  list of conditions and the following disclaimer.
+#  * Redistributions in binary form must reproduce the above copyright notice,
+#  this list of conditions and the following disclaimer in the documentation and/or
+#  other materials provided with the distribution.
+#  * Neither the name of Dash Industry Forum nor the names of its
+#  contributors may be used to endorse or promote products derived from this software
+#  without specific prior written permission.
+#
+#  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS AS IS AND ANY
+#  EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+#  WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+#  IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
+#  INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+#  NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+#  PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+#  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+#  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+#  POSSIBILITY OF SUCH DAMAGE.
+*/
+
+#container
+{
+    padding-left:100px;
+    padding-right:100px;
+    width: 85%;
+    margin-top:0.5cm;
+    margin-bottom: 2cm;
+}
+
+#header
+{
+    text-align:left;
+    margin:10px;
+}
+
+#header h1
+{
+    font: 30pt bold 'Helvetica Neue';
+    color: CadetBlue;
+}
+
+#header p
+{
+    font: 10pt bold 'Roboto';
+    color: black;
+}
+
+#footer
+{
+    text-align:left;
+    background-color:LightGray;
+    padding: 1%;
+    
+    border-top-left-radius: 8px; 
+	border-top-right-radius: 8px; 
+	border-bottom-right-radius: 8px; 
+	border-bottom-left-radius: 8px;
+}
+
+#footer h1
+{
+    font: 30pt bold 'Helvetica Neue';
+    color: CadetBlue;
+}
+
+#footer p
+{
+    font: 10pt bold 'Roboto';
+    color: black;
+}
+
+#footer_left
+{
+    position: relative;
+    text-align: left;
+}
+
+#footer_right
+{
+    position: relative;
+    text-align: right;
+    margin-left: 70%
+}
+
+#options
+{
+    background-color:LightGray;
+    text-align:left;
+    
+    border-top-left-radius: 8px; 
+	border-top-right-radius: 8px; 
+	border-bottom-right-radius: 8px; 
+	border-bottom-left-radius: 8px;
+}
+
+#url
+{
+    width: 100%;
+}
+
+#options h2
+{
+    font: 15pt bold 'Helvetica Neue';
+    color: CadetBlue;
+}
+
+#options p
+{
+    font: 10pt bold 'Roboto';
+    color: black;
+}
+
+table td, table th
+{
+    padding: 5; /* 'cellpadding' equivalent */
+}
+
+body h2,h3,footer,.description
+{
+	text-align:center;
+}
+
+.clear
+{
+    padding: 0;
+	margin:0;
+	border:0;
+	clear: both;
+}
+
+.httpUrl {
+    width: 100px;
+}
+
+#drop_zone
+{
+	border:2px dashed #bbb;
+	-moz-border-radius:5px;
+	-webkit-border-radius:5px;
+	border-radius:5px;
+	padding:10px;
+	text-align:center;
+	font: 20pt bold 'Vollkorn';
+	color:#bbb;
+}
+
+.thumb
+{
+	height:75px;
+	border:1px solid #000;
+	margin:10px 5px 0 0
+}
+
+#progress_bar
+{
+	margin:10px 0;
+	padding:3px;
+	border:1px solid #000;
+	font-size:14px;
+	clear:both;
+	opacity:0;
+	-o-transition:opacity 1s linear;
+	-moz-transition:opacity 1s linear;
+	-webkit-transition:opacity 1s linear;
+	-ms-transition:opacity 1s linear;
+	
+	border-top-left-radius: 8px; 
+	border-top-right-radius: 8px; 
+	border-bottom-right-radius: 8px; 
+	border-bottom-left-radius: 8px;
+}
+
+#progress_bar.loading
+{
+	opacity:0.5
+}
+
+#progress_bar .percent
+{
+	background-color:#9cf;
+	height:auto;
+	width:0
+}
+
+#byte_content
+{
+	margin:5px 0;
+	max-height:100px;
+	overflow-y:auto;
+	overflow-x:hidden
+}
+
+#byte_range
+{
+	margin-top:5px
+}
+
+.box_container {
+	position: relative;
+}
+
+.containerBox {
+    font-weight: bold;
+    color: cyan;
+}
+
+.openContainer {
+    color: yellow;
+}
+
+.leafBox {
+    color: white;
+}
+
+#boxtree, #boxcontent
+{
+    font-family: monospace;
+	font-style: bold; 
+	white-space: pre;
+		
+    height: 250px;
+    
+    background-color: rgb(68, 68, 68);
+    border-top-left-radius: 8px; 
+	border-top-right-radius: 8px; 
+	border-bottom-right-radius: 8px; 
+	border-bottom-left-radius: 8px;
+}
+
+#boxtree
+{
+    width: 47.5%;
+    float: left;
+    overflow-y: visible;
+    overflow-x: hidden;
+    text-align: left;
+    padding: 1%;
+}
+
+#boxcontent
+{
+    width: 47.5%;
+    float: right;
+    overflow: auto;
+    text-align: left;
+    padding: 1%;
+}
+
+.boxOffset, .boxSize, .boxName {
+    float: left;
+    width: 40px;
+}
+
+#boxcontent td {
+    color: white;
+    font-weight:bold;
+}
+
+#boxcontent .boxContentValue:nth-child(2n+1) {
+	background-color: rgb(58, 58, 58);
+}
+
+#boxcontent .boxContentValue:nth-child(2n) {
+	background-color: rgb(78, 78, 78);
+}
+
+#boxcontent .boxContentAttribute {
+    vertical-align: top;
+}
+
+#boxcontent .boxContentAttribute:nth-child(2n+1) {
+	background-color: rgb(58, 58, 58);
+    /*color: cyan;*/
+}
+
+#boxcontent .boxContentAttribute:nth-child(2n) {
+    /*color: yellow;*/
+	background-color: rgb(78, 78, 78);
+}
+
+#hexdata {
+	margin: 1em auto; 
+	padding: 1em;
+	color: white;
+    font-family: monospace;
+	font-style: bold; 
+    overflow: hidden;
+    white-space: pre;
+    
+    background-color: rgb(68, 68, 68);
+	border-top-left-radius: 8px; 
+	border-top-right-radius: 8px; 
+	border-bottom-right-radius: 8px; 
+	border-bottom-left-radius: 8px;
+}
+
+#hexdata p {
+    margin: 0;
+}

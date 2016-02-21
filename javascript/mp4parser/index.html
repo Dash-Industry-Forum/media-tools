@@ -1,0 +1,141 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0//EN" "http://www.w3.org/TR/REC-html40/strict.dtd">
+
+<!--
+
+# The copyright in this software is being made available under the BSD License,
+# included below. This software may be subject to other third party and contributor
+# rights, including patent rights, and no such rights are granted under this license.
+#
+# Copyright (c) 2016, Dash Industry Forum.
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without modification,
+# are permitted provided that the following conditions are met:
+#  * Redistributions of source code must retain the above copyright notice, this
+#  list of conditions and the following disclaimer.
+#  * Redistributions in binary form must reproduce the above copyright notice,
+#  this list of conditions and the following disclaimer in the documentation and/or
+#  other materials provided with the distribution.
+#  * Neither the name of Dash Industry Forum nor the names of its
+#  contributors may be used to endorse or promote products derived from this software
+#  without specific prior written permission.
+#
+#  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS AS IS AND ANY
+#  EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+#  WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+#  IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
+#  INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+#  NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+#  PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+#  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+#  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+#  POSSIBILITY OF SUCH DAMAGE.
+
+-->
+
+<html>
+<head>
+<meta charset="utf-8">
+<title>Online MPEG4 Parser</title>
+<meta name="DESCRIPTION" content="Online MPEG4 file parser">
+<meta name="KEYWORDS" content="MPEG4, MP4, MPEG, DASH, MPEG-DASH, SmoothStreaming, 14496, parser">
+
+<script language="javascript" type="text/javascript" src="https://code.jquery.com/jquery-2.2.0.min.js"></script>
+<script language="javascript" type="text/javascript" src="mp4.js"></script>
+<script language="javascript" type="text/javascript" src="mp4_mobitv_extensions.js"></script>
+<script language="javascript" type="text/javascript" src="biginteger.js"></script>
+<link href="reset.css" rel="stylesheet" type="text/css">
+<link href="mp4.css" rel="stylesheet" type="text/css">
+
+<script type="text/javascript">
+
+  var _gaq = _gaq || [];
+  _gaq.push(['_setAccount', 'UA-44571916-1']);
+  _gaq.push(['_trackPageview']);
+
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+
+</script>
+
+</head>
+
+<body>
+
+<div id="container">
+
+	<div id='header'>
+		<h1>MPEG4 FILE PARSER</h1>
+		<p>Parse files based on ISO Base File Format (ISO/IEC 14496-12).</p>
+		<p>E.g. MPEG-DASH segments, Smooth Streaming fragments, 3gpp/mp4/mov files.</p>
+	</div> <!-- header -->
+	
+	<div id='options'>
+		<table>
+			<tr>
+				<td><h2>Option 1:</h2></td>
+		        <td><p>Select your MPEG4 file here for analysis</p></td>
+				<td><input type="file" id="files" name="files[]" /></td>
+		    </tr>
+		    <tr>
+		        <td><h2>Option 2:</h2></td>
+			    <td><p>Insert HTTP URL to the MPEG4 file here</p></td>
+			    <td><input type="text" id="url" name="url[]" /></td>
+			    
+		    </tr>
+		    <tr>
+		    	<td><h2>Option 3:</h2></td>
+			    <td><p>Drag your MPEG4 file here for analysis</p></td>
+			    <td><div id="drop_zone">Drop files here</div></td>
+		    </tr>
+		    <tr>
+		    	<td><h2>Option 4:</h2></td>
+			    <td><p>Samples for test</p></td>
+			    <td><button class="linkbutton" onclick="handleUrl('http://vm2.dashif.org/dash/vod/testpic_2s/V1/init.mp4')">Sample Init Segment</button>
+		        <button class="linkbutton" onclick="handleUrl('http://vm2.dashif.org/dash/vod/testpic_2s/V1/1.m4s')">Sample Media Segment</button></td>
+		    </tr>
+		</table>
+	</div> <!-- options -->
+
+	<div id='messages'>
+	</div> <!-- messages -->
+
+	<div id='progress_bar'>
+		<div class="percent">0%</div>
+	</div> <!-- progress_bar -->
+	
+	<div id='box_container'>
+		
+		<div id='boxtree'>
+
+		</div> <!-- boxtree -->
+		
+		<div id='boxcontent'>
+
+		</div> <!-- boxcontent -->
+				
+	</div> <!-- box_container -->
+
+	<p class="clear"/>
+
+	<div id='hexdata'>
+
+	</div> <!-- hexdata -->
+
+	<div id='footer'>
+		
+		<div id='footer_left'>
+			<p>For information, bug reports or feature requests please contact Ola Hållmarker</p>
+			<p>info@mp4parser.com</p>
+		</div> <!-- footer_left -->
+			
+	</div> <!-- footer -->
+
+</div> <!-- container -->
+
+</body>
+</html>
+
