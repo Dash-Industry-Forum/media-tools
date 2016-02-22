@@ -84,6 +84,16 @@ def dump_hex(src, length=8):
         result.append("%04X   %-*s   %s\n" % (i, length*3, hexa, printable))
     return ''.join(result)
 
+def dump_to_array(src, length=8):
+    print 'data=[',
+    l = 0
+    for b in src:
+        print '{0},'.format(hex(ord(b))),
+        l += 1
+        if l % length == 0:
+            print '\n',
+    print ']'
+
 # TS format:    http://en.wikipedia.org/wiki/MPEG_transport_stream
 # PAT/PMT:      http://en.wikipedia.org/wiki/Program_Specific_Information
 # PES:          http://en.wikipedia.org/wiki/Packetized_elementary_stream
@@ -278,11 +288,13 @@ class frame(object):
                     self.dts / 90.0,
                     self.pts - self.dts)
 
+cc_map = {}
+
 #
 # TS packet parser
 #
 class ts_packet(object):
-    def __init__(self, data, display=False):
+    def __init__(self, data, display=False, check_cc=False):
         self.reader = bitreader(data)
         self.data = data
 
@@ -298,6 +310,23 @@ class ts_packet(object):
         self.scrambling_control             = read_bits(self.reader,  2, '  scrambling control', display)
         self.adaptation_field_exist         = read_bits(self.reader,  2, '  adaptation field exist', display)
         self.continuity_counter             = read_bits(self.reader,  4, '  continuity counter', display)
+
+        global cc_map
+        if not cc_map.has_key(self.pid):
+            cc_map[self.pid] = -1
+
+        if cc_map[self.pid] >= 0:
+            cc_map[self.pid] = cc_map[self.pid] + 1
+            if cc_map[self.pid] > 15:
+                cc_map[self.pid] = 0
+
+            if check_cc:
+                if not self.continuity_counter == cc_map[self.pid]:
+                    #print 'CC error:', self.continuity_counter, ' != ', cc_map[self.pid]
+	                pass
+
+        cc_map[self.pid] = self.continuity_counter
+
         if (self.adaptation_field_exist == 2) or (self.adaptation_field_exist == 3):
             tell_1 = self.reader.index
             self.adaptation_field_length            = read_bits(self.reader, 8, '   adaptation field length', display)
@@ -1000,7 +1029,7 @@ class ts_importer(object):
         offset = 0
         pids = {}
         while offset < len(data) and ord(data[offset]) == 0x47:
-            packet = ts_packet(data[offset:offset+188], display=False)
+            packet = ts_packet(data[offset:offset+188], display=False, check_cc=False)
             #log(dump_hex(packet.data, 16))
 
             if not pids.has_key(packet.pid):
@@ -1033,7 +1062,7 @@ class ts_importer(object):
     def add_data(self, data):
         offset = 0
         while offset + 188 <= len(data) and ord(data[offset]) == 0x47:
-            packet = ts_packet(data[offset:offset+188], display=self.options['verbose'] >= 3)
+            packet = ts_packet(data[offset:offset+188], display=self.options['verbose'] >= 3, check_cc=True)
             #log(dump_hex(packet.data, 16))
 
             if not self.pid_counter.has_key(packet.pid):
@@ -1171,7 +1200,7 @@ class ts_importer(object):
     def _handle_pat(self, packet):
         if self.has_pat:
             return
-        pat_packet = pat(packet.data, display=self.options['verbose'] >= 1)
+        pat_packet = pat(packet.data, display=self.options['verbose'] >= 2)
         self.observer.on_pat(pat_packet)
         for info in pat_packet.pmt_info:
             if info.program_num == 0x00:
@@ -1185,7 +1214,7 @@ class ts_importer(object):
     def _handle_pmt(self, packet):
         #if self.has_pmt:
         #    return
-        pmt_packet = pmt(packet.data, display=self.options['verbose'] >= 1)
+        pmt_packet = pmt(packet.data, display=self.options['verbose'] >= 2)
         self.observer.on_pmt(self, pmt_packet)
         self.has_pmt = True
         self.scte35_pids = self.observer.get_scte35_pids()
@@ -1193,19 +1222,19 @@ class ts_importer(object):
     def _handle_nit(self, packet):
         if self.has_nit:
             return
-        nit_packet = nit(packet.data, display=self.options['verbose'] >= 1)
+        nit_packet = nit(packet.data, display=self.options['verbose'] >= 2)
         self.has_nit = True
 
     def _handle_eit(self, packet):
         if packet.payload_unit_start_indicator:
             if self.eit_data:
-                eit_packet = eit(self.eit_data, display=self.options['verbose'] >= 1)
+                eit_packet = eit(self.eit_data, display=self.options['verbose'] >= 2)
             self.eit_data = packet.data
         elif self.eit_data:
             self.eit_data += packet.payload
 
     def _handle_scte35(self, packet):
-        scte35 = SCTE35(packet.data, display=self.options['verbose'] >= 1)
+        scte35 = SCTE35(packet.data, display=self.options['verbose'] >= 2)
         print "SCTE35 parsed: %s" % scte35
 
 #
@@ -2187,71 +2216,100 @@ class ac3_parser(object):
         return frames
 
 #
+# TeleText EBU Parser
+#
+def parse_teletext_ebu(data, display):
+    reader = bitreader(data)
+
+    read_bits(reader,  2, '  reserved future use', display)
+    read_bits(reader,  1, '  field parity', display)
+    read_bits(reader,  5, '  line offset', display)
+    fc = read_bits(reader,  8, '  framing code', display, to_hex = True)
+
+    # ets_300706e01p.pdf
+    # 7.1.2	Packet address
+    d = read_bits(reader,  16, '  magazine number and packet number', display=False)
+    magazine_number = bit(d, 14) + 2 * bit(d, 12) + 4 * bit(d, 10)
+    packet_number = bit(d, 8) + 2 * bit(d, 6) + 4 * bit(d, 4) + 8 * bit(d, 2) + 16 * bit(d, 0)
+    print_bits('  magazine number', magazine_number, display)
+    print_bits('  packet number', packet_number, display)
+
+    if packet_number <= 25:
+        payload_len = 40
+        if packet_number == 0:
+            payload_len = 32
+            # ets_300706e01p.pdf
+            # 9.3.1	Page header
+            #prefix = reader.step_bytes(5)
+            X = read_bits(reader, 8, '    page number units', display)
+            Y = read_bits(reader, 8, '    page number tens', display)
+            page_number_units = hamming_8_4(X, 8)
+            page_number_tens = hamming_8_4(Y, 8)
+            page_number = 10 * page_number_tens + page_number_units
+            print_bits('    page number=', page_number, display)
+            read_bits(reader, 8, '    subcode s1', display)
+            read_bits(reader, 8, '    subcode s2 + c4', display)
+            read_bits(reader, 8, '    subcode s3', display)
+            read_bits(reader, 8, '    subcode s4 + c5, c6', display)
+            read_bits(reader, 8, '    control bits c7 - c10', display)
+            read_bits(reader, 8, '    control bits c11  c14', display)
+
+        payload = reader.step_bytes(payload_len)
+        #print dump_hex(payload, 16)
+
+        d2 = []
+        for i in range(0, len(payload)):
+            char = invtab[ord(payload[i])] & 0x7f
+            if char < 32 or char > 122:
+                d2.append(0x20)
+            else:
+                d2.append(char)
+
+            #d2.append(invtab[ord(payload[i])])
+
+        data_str = ''.join(['%s' % chr(c & 0x7f) for c in d2])
+        if display:
+            log('  data ({0} bytes) = {1}'.format(len(data_str), data_str))
+            #print dump_hex(data_str, 16)
+
+        return {'data': data_str, 'language' : 'unknown'}
+
+    else:
+        if display:
+            log('TODO: page enhancement data packets')
+
+    return None
+
+#
 # TeleText subtitle parser
 #
 def parse_teletext_subtitle(data, display=False):
     reader = bitreader(data)
 
-    log('')
-    log('[TELETEXT]')
+    #display = True
+
+    if display:
+        log('')
+        log('[TELETEXT]')
     # dvt-txt_a041.pdf
     # 4.3 Syntax for PES data field
     data_identifier = read_bits(reader,  8, '  data identifier', display, to_hex = True)
 
+    frames = []
     while reader.tell() < len(data):
-        log('')
-        log('[TELETEXT UNIT]')
+        if display:
+            log('')
+            log('[TELETEXT UNIT]')
         read_bits(reader,  8, '  data unit id', display, to_hex = True)
-        read_bits(reader,  8, '  data unit length', display)
+        dul = read_bits(reader,  8, '  data unit length', display, to_hex=True)
 
-        read_bits(reader,  2, '  reserved future use', display)
-        read_bits(reader,  1, '  field parity', display)
-        read_bits(reader,  5, '  line offset', display)
-        read_bits(reader,  8, '  framing code', display, to_hex = True)
+        data_field = reader.step_bytes(dul)
 
-        # ets_300706e01p.pdf
-        # 7.1.2	Packet address
-        d = read_bits(reader,  16, '  magazine number and packet number', display=False)
-        magazine_number = bit(d, 14) + 2 * bit(d, 12) + 4 * bit(d, 10)
-        packet_number = bit(d, 8) + 2 * bit(d, 6) + 4 * bit(d, 4) + 8 * bit(d, 2) + 16 * bit(d, 0)
-        print_bits('  magazine number', magazine_number, display)
-        print_bits('  packet number', packet_number, display)
+        frame = parse_teletext_ebu(data_field, display)
+        if frame:
+            frames.append(frame)
 
-        if packet_number <= 25:
-            payload_len = 40
-            if packet_number == 0:
-                payload_len = 32
-                # ets_300706e01p.pdf
-                # 9.3.1	Page header
-                #prefix = reader.step_bytes(5)
-                X = read_bits(reader, 8, '    page number units', display)
-                Y = read_bits(reader, 8, '    page number tens', display)
-                page_number_units = hamming_8_4(X, 8)
-                page_number_tens = hamming_8_4(Y, 8)
-                page_number = 10 * page_number_tens + page_number_units
-                print_bits('    page number=', page_number, display)
-                read_bits(reader, 8, '    subcode s1', display)
-                read_bits(reader, 8, '    subcode s2 + c4', display)
-                read_bits(reader, 8, '    subcode s3', display)
-                read_bits(reader, 8, '    subcode s4 + c5, c6', display)
-                read_bits(reader, 8, '    control bits c7 - c10', display)
-                read_bits(reader, 8, '    control bits c11  c14', display)
-
-            payload = reader.step_bytes(payload_len)
-            d2 = []
-            for i in range(0, len(payload)):
-                char = invtab[ord(payload[i])] & 0x7f
-                if char < 32 or char > 122:
-                    d2.append(0x20)
-                else:
-                    d2.append(char)
-
-            #    d2.append(invtab[ord(payload[i])])
-            data_str = ''.join(['%s' % chr(c & 0x7f) for c in d2])
-            log('  data ({0} bytes) = {1}'.format(len(data_str), data_str))
-        else:
-            log('TODO: page enhancement data packets')
-            payload = reader.step_bytes(40)
+    return frames
 
 #
 # DVB subtitle parser
@@ -2587,10 +2645,10 @@ class parser_observer(observer):
                 self.aac_pid = stream.elementary_pid
                 importer.observe_pid(stream.elementary_pid)
                 #pass
-            elif stream.stream_type == STREAM_TYPE_PRIVATE:
-                self.ac3_pid = stream.elementary_pid
-                importer.observe_pid(stream.elementary_pid)
-                #pass
+            #elif stream.stream_type == STREAM_TYPE_PRIVATE:
+            #    self.ac3_pid = stream.elementary_pid
+            #    importer.observe_pid(stream.elementary_pid)
+            #    #pass
             elif stream.stream_type == STREAM_TYPE_METADATA:
                 self.metadata_pid = stream.elementary_pid
                 importer.observe_pid(stream.elementary_pid)
@@ -2635,8 +2693,10 @@ class parser_observer(observer):
                 for frame in frames:
                     log(frame)
         elif pid == self.teletext_pid:
-            parse_teletext_subtitle(pes.payload, display=self.text_display)
-            #pass
+            frames = parse_teletext_subtitle(pes.payload, display=self.text_display)
+            #from cavena import parse_teletext_subtitle_cavena
+            #frames = parse_teletext_subtitle_cavena(pes.payload, pes.pts, pid)
+
         elif pid == self.dvb_pid:
             parse_dvb_subtitle(pes.payload, display=self.text_display)
             #pass
@@ -2693,6 +2753,8 @@ def handle_http(url, importer):
     conn.request('GET', parts.path)
     data = conn.getresponse().read()
     importer.preflight(data)
+    global cc_map
+    cc_map.clear()
     importer.add_data(data)
     importer.flush()
 

@@ -697,6 +697,8 @@ class esds_box(box):
     def __init__(self, *args):
         box.__init__(self, *args)
 
+        self.cfg = ''
+
         i = parse_generator(self.fmap[self.offset+8:self.offset+self.size])
         i.next() # prime
         vf = i.send('>I')[0]
@@ -734,6 +736,7 @@ class esds_box(box):
                         cfg.append(X)
 
                     cfg_str = '0x' + ''.join(['%02x' % c for c in cfg])
+                    self.cfg = cfg_str
 
                     self.decoration = 'cfg={0}, obj_type={1}, stream_type={2}'\
                         .format(cfg_str, obj_type, stream_type)
@@ -886,6 +889,9 @@ class avcC_box(box):
 
         self.decoration = 'profile={0}, {1}, level={2}, sps/pps:{3} {4}'\
             .format(self.profile_ind, self.profile_com, self.level, spsb64, ppsb64)
+
+        self.sps = sps_bin_str
+        self.pps = pps_bin_str
 
 def read_hex(reader, bytes):
     vec = []
@@ -1090,6 +1096,9 @@ class hdlr_box(full_box):
             encoding_name += chr(i.send('>B')[0])
 
         self.decoration = 'type={0} name={1}'.format(handler_type, encoding_name)
+
+        self.handler_type = handler_type
+        self.encoding_name = encoding_name
 
 class moof_box(box):
     def __init__(self, fmap, box_type, size, offset, parent=None):
