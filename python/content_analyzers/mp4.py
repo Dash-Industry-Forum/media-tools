@@ -1058,8 +1058,15 @@ class tkhd_box(full_box):
         i.send('>I') # reserved
         self.duration = i.send(self.version and '>Q' or '>I')[0]
 
-        self.decoration = 'track_id:%d creation=%s modification=%s duration=%d' % \
-            (self._track_id, self.creation_time, self.modification_time, self.duration)
+        for j in range(0, 13):
+            # reserved, matrix etc
+            i.send('>I')
+
+        self.width = i.send('>I')[0] >> 16
+        self.height = i.send('>I')[0] >> 16
+
+        self.decoration = 'track_id:%d creation=%s modification=%s duration=%d width=%d height=%d' % \
+            (self._track_id, self.creation_time, self.modification_time, self.duration, self.width, self.height)
 
     @property
     def track_id(self):
@@ -2172,9 +2179,56 @@ class sampleEncryption_box(object):
 
         return msg
 
+class trackEncryption_box(object):
+    def __init__(self, data, version, flags):
+        self.data = data
+        self.version = version
+        self.flags = flags
+
+    @property
+    def decoration(self):
+        msg = 'PIFF Track Encryption'
+        base_offset = 0
+
+        alg = struct.unpack('>i', '\x00'+self.data[base_offset:base_offset + 3])[0]
+        base_offset += 3
+        self.iv_size = struct.unpack('>B', self.data[base_offset:base_offset + 1])[0]
+        base_offset += 1
+        key_id = ''.join(["%02X" % ord(x) for x in self.data[base_offset:base_offset + 16]])
+        msg += '\n Algorithm: {0} IV_size: {1} Default Key ID: 0x{2}'.format(alg, self.iv_size, key_id)
+        base_offset += 16
+
+        return msg
+
+class pssh_uuid_box(object):
+    def __init__(self, data, version, flags):
+        self.data = data
+        self.version = version
+        self.flags = flags
+
+    @property
+    def decoration(self):
+        msg = 'PIFF PSSH'
+        base_offset = 0
+
+        system_id = ''.join(["%02X" % ord(x) for x in self.data[base_offset:base_offset + 16]])
+        base_offset += 16
+
+        data_size = struct.unpack('>I', self.data[base_offset:base_offset + 4])[0]
+        base_offset += 4
+
+        data = ''.join(["%02X" % ord(x) for x in self.data[base_offset:base_offset + data_size]])
+
+        msg += '\n system_id: {0} data_size: {1} data {2}'.format(system_id, data_size, data)
+        base_offset += 16
+
+        return msg
+
 tfxdGuid = '6D1D9B0542D544E680E2141DAFF757B2'
 tfrfGuid = 'D4807EF2CA3946958E5426CB9E46A79F'
 sampleEncryptionGuid = 'A2394F525A9B4F14A2446C427C648DF4'
+trackEncryptionGuid = "8974DBCE7BE74C5184F97148F9882554"
+psshGuid = "D08A4F1810F34A82B6C832D8ABA183D3"
 
 class uuid_box(full_box):
     def __init__(self, *args):
@@ -2198,8 +2252,14 @@ class uuid_box(full_box):
         elif typeStr == sampleEncryptionGuid:
             sampleEncryption = sampleEncryption_box(data, self.version, self.flags, iv_size=8)
             return msg + sampleEncryption.decoration
+        elif typeStr == trackEncryptionGuid:
+            trackEncryption = trackEncryption_box(data, self.version, self.flags)
+            return msg + trackEncryption.decoration
+        elif typeStr == psshGuid:
+            pssh_uuid = pssh_uuid_box(data, self.version, self.flags)
+            return msg + pssh_uuid.decoration
         else:
-            print 'unknown ola', msg
+            print 'unknown uuid tag', msg
         return
 
 class sdtp_box(full_box):

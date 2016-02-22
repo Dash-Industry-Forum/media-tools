@@ -522,6 +522,30 @@ function box_tkhd(data, offset, len) {
     x += (v == 0) ? 4 : 8;
     boxContent.Duration = dur.toString();
 
+    data.getUint32(x); x+= 4; // reserved
+    data.getUint32(x); x+= 4; // reserved
+
+    data.getUint16(x); x+= 2; // layer
+    data.getUint16(x); x+= 2; // alternate_group
+    data.getUint16(x); x+= 2; // volume
+    data.getUint16(x); x+= 2; // reserved
+
+    data.getUint32(x); x+= 4; // matrix
+    data.getUint32(x); x+= 4; // matrix
+    data.getUint32(x); x+= 4; // matrix
+    data.getUint32(x); x+= 4; // matrix
+    data.getUint32(x); x+= 4; // matrix
+    data.getUint32(x); x+= 4; // matrix
+    data.getUint32(x); x+= 4; // matrix
+    data.getUint32(x); x+= 4; // matrix
+    data.getUint32(x); x+= 4; // matrix
+
+    var width = data.getUint32(x) >> 16; x+= 4; // width
+    var height = data.getUint32(x) >> 16; x+= 4; // height
+
+    boxContent['width'] = width.toString();
+    boxContent['height'] = height.toString();
+
     return {'boxContent': boxContent,
             'childOffset' : offset + 8};
 }
@@ -1408,6 +1432,10 @@ function box_saiz(data, offset, len) {
     x += 4;
     boxContent['Box flags'] = '0x' + f.toString(16);
 
+    if (f & 1) {
+        x += 8
+    }
+
     var defSampleSize = data.getUint8(x); x += 1;
     boxContent['Default sample size'] = defSampleSize;
     if (0 == defSampleSize) {
@@ -1545,6 +1573,8 @@ function box_frma(data, offset, len) {
 var gTfrfGuid = "d4807ef2ca3946958e5426cb9e46a79f";
 var gTfxdGuid = "6d1d9b0542d544e680e2141daff757b2";
 var gSampleEncryptionGuid = "a2394f525a9b4f14a2446c427c648df4";
+var gTrackEncryptionGuid = "8974dbce7be74c5184f97148f9882554";
+var gPsshGuid = "d08a4f1810f34a82b6c832d8aba183d3";
 
 function box_uuid(data, offset, len) {
     var boxContent = {};
@@ -1635,6 +1665,31 @@ function box_uuid(data, offset, len) {
             }
             boxContent.Entries.push(entry);
         }
+    }
+    else if (uuid == gTrackEncryptionGuid)
+    {
+        boxContent['box_type'] = 'PIFF TrackEncryption'
+
+        var alg = (data.getUint8(x) << 16) + (data.getUint8(x + 1) << 8) + (data.getUint8(x + 2) << 0);
+        boxContent['algorithm'] = alg;
+        ivSize = data.getUint8(x + 3);
+        boxContent['IV-size'] = ivSize;
+        boxContent['key-id'] = binStringToHex2(data.getUTF8String(x + 4, 16));
+        x += 20;
+    }
+    else if (uuid == gPsshGuid)
+    {
+        boxContent['box_type'] = 'PIFF PSSH'
+
+        boxContent['system_id'] = binStringToHex2(data.getUTF8String(x, 16));
+        x += 16
+
+        data_size = data.getUint32(x);
+        boxContent['data_size'] = data_size;
+        x += 4
+
+        boxContent['data'] = binStringToHex2(data.getUTF8String(x, data_size));
+        x += data_size
     }
     else
         boxContent['box_type'] = 'unknown'
