@@ -1,0 +1,20 @@
+[
+    {
+        "contentType" : "video",
+        "resolution" : "1280x720", 
+        "frameRate" : 30,
+        "gopLength" : 60,
+        "segmentDuration" : 2,
+        "variants" : [{"name" : "V1", "vrate" : 100, "resolution": "320x180"},
+                      {"name" : "V3", "vrate" : 300, "resolution": "480x270"},
+                      {"name" : "V6", "vrate" : 600, "resolution": "640x360"},
+                      {"name" : "V9", "vrate" : 900, "resolution": "720x406"}]
+    },
+    {
+        "contentType" : "audio",
+        "variants" : [{"name" : "A1", "arate" : 20, "monops" : true},
+                      {"name" : "A3", "arate" : 32},
+                      {"name" : "A6", "arate" : 64},
+                      {"name" : "A9", "arate" : 96}]
+    }
+]

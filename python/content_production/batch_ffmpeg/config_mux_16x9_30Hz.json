@@ -1,0 +1,10 @@
+[
+    {
+        "contentType" : "mux",
+        "resolution" : "1280x720", 
+        "frameRate" : 30,
+        "gopLength" : 60,
+        "segmentDuration" : 2,
+        "variants" : [{"name" : "H6", "vrate" : 600, "arate" : 64, "resolution": "640x360"}]
+    }
+]

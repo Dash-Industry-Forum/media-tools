@@ -1,0 +1,15 @@
+[
+    {
+        "contentType" : "video",
+	"codec" : "hevc",
+        "resolution" : "1280x720", 
+        "frameRate" : 30,
+        "gopLength" : 60,
+        "segmentDuration" : 2,
+        "variants" : [{"name" : "V1", "vrate" : 100, "resolution": "320x180"}]
+    },
+    {
+        "contentType" : "audio",
+        "variants" : [{"name" : "A3", "arate" : 32}]
+    }
+]

@@ -1,0 +1,10 @@
+[
+    {
+        "contentType" : "mux",
+        "resolution" : "640x360", 
+        "frameRate" : 30,
+        "gopLength" : 30,
+        "segmentDuration" : 1,
+        "variants" : [{"name" : "V300_A48", "vrate" : 300, "resolution" : "640x360", "arate": 48}]
+    }
+]

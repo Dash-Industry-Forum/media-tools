@@ -1,0 +1,11 @@
+[
+    {
+        "contentType" : "mux",
+        "codec" : "hevc",
+        "resolution" : "1280x720", 
+        "frameRate" : 30,
+        "gopLength" : 60,
+        "segmentDuration" : 2,
+        "variants" : [{"name" : "muxed", "vrate" : 400, "arate" : 64, "resolution": "640x360"}]
+    }
+]
