@@ -45,6 +45,7 @@ import mpdparser
 
 CREATE_DIRS = True
 
+
 class FileWriter(object):
     "File writer that handles standard file system."
 
@@ -77,6 +78,7 @@ class FileWriter(object):
         with open(path, "wb") as ofh:
             ofh.write(data)
 
+
 def fetch_file(url):
     "Fetch a specific file via http and return as string."
     try:
@@ -93,12 +95,11 @@ def fetch_file(url):
     return data
 
 
-
 class Fetcher(object):
     "Fetching a complete live DASH session. Must be stopped with interrupt."
 
-    def __init__(self, mpd_string, base_url=None, file_writer=None, verbose=False):
-        self.mpd = mpd_string
+    def __init__(self, mpd, base_url=None, file_writer=None, verbose=False):
+        self.mpd = mpd
         self.base_url = base_url
         self.file_writer = file_writer
         self.verbose = verbose
@@ -107,10 +108,9 @@ class Fetcher(object):
         self.interrupted = False
         self.prepare()
         signal.signal(signal.SIGINT, self.signal_handler)
-        if mpd_string.type != "dynamic":
+        if mpd.type != "dynamic":
             print "Can only handle dynamic MPDs (live content)"
             sys.exit(1)
-
 
     def prepare(self):
         "Prepare by gathering info for each representation to download."
@@ -223,6 +223,7 @@ class FetchThread(Thread):
             if self.interrupted:
                 break
 
+
 def download(mpd_url=None, mpd_str=None, base_url=None, base_dst="", number_segments=-1, verbose=False):
     "Download MPD if url specified and then start downloading segments."
     if mpd_url:
@@ -236,8 +237,9 @@ def download(mpd_url=None, mpd_str=None, base_url=None, base_dst="", number_segm
         print fetcher.fetches
     fetcher.start_fetch(number_segments)
 
+
 def main():
-    "Parse commande line and start the fetching."
+    "Parse command line and start the fetching."
     from optparse import OptionParser
     usage = "usage: %prog [options] mpdURL [dstDir]"
     parser = OptionParser(usage)
