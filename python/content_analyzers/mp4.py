@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# flake8: noqa
 
 """
 MP4 box parser
@@ -39,17 +40,24 @@ MP4 box parser
 #pylint: disable=expression-not-assigned
 #pylint: disable=unused-variable
 
-import sys
-import struct
-import bisect
 import base64
 import binascii
+import bisect
 import functools
+
+import struct
+from struct import unpack
 
 VERBOSE = 0
 REGISTERED_BOXES = {}
 
 FILTER = ''.join([(len(repr(chr(character))) == 3) and chr(character) or '.' for character in range(256)])
+
+
+def str_to_uint32(string4):
+    "4-character string to unsigned int32."
+    return unpack(">I", string4)[0]
+
 
 def dump_hex(src, length=8):
     """ dump_hex """
@@ -61,16 +69,17 @@ def dump_hex(src, length=8):
         result.append("%04X   %-*s   %s\n" % (i, length * 3, hexa, printable))
     return ''.join(result)
 
+
 def parse_generator(data, fmt=''):
     """ parse_generator """
     offset = 0
     ret = None
     while offset < len(data):
-        # print 'parsing "%s" at offset %d of %d (%-d)' % (fmt, offset, len(data), struct.calcsize(fmt))
         if fmt:
             ret = struct.unpack_from(fmt, data, offset)
             offset += struct.calcsize(fmt)
         fmt = (yield ret) or fmt
+
 
 def match_attribute(obj, crit):
     """ match_attribute """
@@ -78,6 +87,7 @@ def match_attribute(obj, crit):
     obj_value = getattr(obj, key)
     # print(' - - testing %s == %s' % (str(value), str(obj_value)))
     return str(obj_value) == value
+
 
 def match_box(obj, criteria='xxxx'):
     """ match_box """
@@ -87,6 +97,7 @@ def match_box(obj, criteria='xxxx'):
     elif criteria.find('[') != -1:
         # assume 'atom[attr=val]' notation
         return obj.type == criteria[:4] and match_attribute(obj, criteria[5:-1])
+
 
 class box(object):
     def __init__(self, fmap, box_type, size, offset, parent=None):
@@ -123,7 +134,7 @@ class box(object):
                              'stbl',
                              'mfra',
                              'udta',
-                             'meta',
+                             #'meta',
                              'stsd',
                              'sinf',
                              'schi',
@@ -131,8 +142,10 @@ class box(object):
                              'enca',
                              'avc1',
                              'hev1',
+                             'hvc1',
                              'mp4a',
-                             'ec_3'] or self.__class__ == mp4
+                             'ec_3',
+                             'vttc'] or self.__class__ == mp4
 
     @property
     def is_unparsed(self):
@@ -259,6 +272,7 @@ class box(object):
         old = object.__str__(self)
         return old.replace('object at', '\'%s\' [%d:%d] object at' % (self.path, self.offset, self.size))
 
+
 class full_box(box):
     def __init__(self, *args):
         box.__init__(self, *args)
@@ -275,6 +289,7 @@ class full_box(box):
             (self.type, self.offset, self.size, self.version, self.flags, \
             hasattr(self, 'decoration') and self.decoration or '')
 
+
 class bridged_box(object):
     def __init__(self, start, end):
         assert start.fmap == end.fmap
@@ -285,6 +300,7 @@ class bridged_box(object):
         self.offset = start.offset
         self.size = end.offset + end.size - start.offset
         self.type = '%s->%s' % (start.type, end.type)
+
 
 class mp4(box):
     def __init__(self, fmap, size=0, stops=None, recurse=True, offset=0, key=None, encrypted=False):
@@ -328,9 +344,11 @@ class mp4(box):
     def childpos(self):
         return self.offset
 
+
 class moov_box(box):
     def __init__(self, fmap, box_type, size, offset, parent=None):
         box.__init__(self, fmap, box_type, size, offset, parent)
+
 
 class mvhd_box(full_box):
     def __init__(self, *args):
@@ -343,6 +361,7 @@ class mvhd_box(full_box):
         self.duration = i.send(self.version and '>Q' or '>I')[0]
         self.decoration = 'tscale:%d dur:%.3f creation=%s modification=%s' % \
             (self.timescale, self.duration / float(self.timescale), self.creation_time, self.modification_time)
+
 
 class pssh_box(full_box):
     def __init__(self, *args):
@@ -379,6 +398,7 @@ class pssh_box(full_box):
     @property
     def childpos(self):
         return self.offset+32
+
 
 class saiz_box(full_box):
     def __init__(self, *args):
@@ -461,6 +481,7 @@ class saio_box(full_box):
 
         return base + ''.join(entries)[:-1]
 
+
 class sbgp_box(full_box):
     def __init__(self, *args):
         full_box.__init__(self, *args)
@@ -498,6 +519,7 @@ class sbgp_box(full_box):
                 entries.append(' - #{index:03d} sample count:{0:3d} group descr index:{1:3d}\n'.format(*data, index=i))
 
         return base + ''.join(entries)[:-1]
+
 
 class sgpd_box(full_box):
     def __init__(self, *args):
@@ -553,6 +575,34 @@ class sgpd_box(full_box):
 
         return base + ''.join(entries)[:-1]
 
+
+class senc_box(full_box):
+    def __init__(self, *args):
+        full_box.__init__(self, *args)
+        i = parse_generator(self.fmap[self.offset+12:self.offset+self.size])
+        i.next() # prime
+        self.sample_count = i.send('>I')[0]
+        self.samples = []
+        def_iv_size = 8
+        for j in range(0, self.sample_count):
+            iv = i.send('>Q')[0]
+            iv_2 = hex(iv)
+            self.samples.append(iv_2)
+
+            # TODO: subsamples
+
+    @property
+    def decoration(self):
+        base = '#samples: {0}'.format(self.sample_count)
+        entries = ['\n']
+
+        if VERBOSE > 1:
+            for i in range(self.sample_count):
+                sample = self.samples[i]
+                entries.append(' - #{index:03d} iv:{0}\n'.format(sample, index=i))
+        return base + ''.join(entries)[:-1]
+
+
 class genc_box(full_box):
     def __init__(self, *args):
         full_box.__init__(self, *args)
@@ -590,7 +640,7 @@ class genc_box(full_box):
         self._init_sample_map_from_sbgp(tenc)
 
         saiz = self.get_sibling('saiz')
-        
+
         #saio = self.get_sibling('saio')
         #moof = self.get_ancestor('moof')
         #sample_offset = moof.offset + saio.entry_offset(0)
@@ -674,6 +724,7 @@ class genc_box(full_box):
 
         return base + ''.join(entries)[:-1]
 
+
 class SampleEntry(box):
     def __init__(self, *args):
         box.__init__(self, *args)
@@ -681,6 +732,7 @@ class SampleEntry(box):
     @property
     def data_reference_index(self):
         return struct.unpack('>H', self.fmap[self.offset+14:self.offset+16])[0]
+
 
 def getDescriptorLen(i):
     tmp = i.send('>B')[0]
@@ -692,6 +744,7 @@ def getDescriptorLen(i):
     len_ = ((len_ << 7) | (tmp & 0x7f))
 
     return len_
+
 
 class esds_box(box):
     def __init__(self, *args):
@@ -741,6 +794,7 @@ class esds_box(box):
                     self.decoration = 'cfg={0}, obj_type={1}, stream_type={2}'\
                         .format(cfg_str, obj_type, stream_type)
 
+
 class mp4a_box(SampleEntry):
     def __init__(self, *args):
         SampleEntry.__init__(self, *args)
@@ -753,6 +807,7 @@ class mp4a_box(SampleEntry):
     @property
     def childpos(self):
         return self.offset+36
+
 
 class ac_3_box(SampleEntry):
     def __init__(self, *args):
@@ -767,6 +822,7 @@ class ac_3_box(SampleEntry):
     def childpos(self):
         return self.offset+36
 
+
 class ec_3_box(SampleEntry):
     def __init__(self, *args):
         SampleEntry.__init__(self, *args)
@@ -780,12 +836,14 @@ class ec_3_box(SampleEntry):
     def childpos(self):
         return self.offset+36
 
+
 class dac3_box(SampleEntry):
     def __init__(self, *args):
         SampleEntry.__init__(self, *args)
         self.dec_info = self.fmap[self.offset+8:self.offset+self.size]
         self.dec_info_hex = ''.join(['%02x' % ord(c) for c in self.dec_info])
         self.decoration = 'dec_info={0}'.format(self.dec_info_hex)
+
 
 class dec3_box(SampleEntry):
     def __init__(self, *args):
@@ -794,9 +852,11 @@ class dec3_box(SampleEntry):
         self.dec_info_hex = ''.join(['%02x' % ord(c) for c in self.dec_info])
         self.decoration = 'dec_info={0}'.format(self.dec_info_hex)
 
+
 class enca_box(mp4a_box):
     def __init__(self, *args):
         mp4a_box.__init__(self, *args)
+
 
 class mp4v_box(SampleEntry):
     def __init__(self, *args):
@@ -805,6 +865,7 @@ class mp4v_box(SampleEntry):
         height = struct.unpack('>h', self.fmap[self.offset+34:self.offset+36])[0]
         self.decoration = 'index:{0} width:{1} height:{2}'\
             .format(self.data_reference_index, width, height)
+
 
 class avcx_box(SampleEntry):
     def __init__(self, *args):
@@ -826,17 +887,21 @@ class avcx_box(SampleEntry):
     def childpos(self):
         return self.offset+86
 
+
 class avc1_box(avcx_box):
     def __init__(self, *args):
         avcx_box.__init__(self, *args)
+
 
 class avc3_box(avcx_box):
     def __init__(self, *args):
         avcx_box.__init__(self, *args)
 
+
 class hev1_box(avcx_box):
     def __init__(self, *args):
         avcx_box.__init__(self, *args)
+
 
 class hvc1_box(avcx_box):
     def __init__(self, *args):
@@ -849,6 +914,7 @@ class encv_box(avc1_box):
         avc1_box.__init__(self, *args)
         #print dump_hex(self.fmap[self.offset:self.offset+self.size])
 
+
 class avcC_box(box):
     def __init__(self, *args):
         box.__init__(self, *args)
@@ -857,7 +923,7 @@ class avcC_box(box):
 
         self.version = i.send('>B')[0]
         self.profile_ind = i.send('>B')[0]
-        self.profile_com = i.send('>B')[0]
+        self.profile_compat = i.send('>B')[0]
         self.level = i.send('>B')[0]
         self.dummy1 = i.send('>B')[0]
         tmp1 = i.send('>B')[0]
@@ -888,10 +954,17 @@ class avcC_box(box):
         ppsb64 = base64.b64encode(binascii.a2b_hex(pps_bin_str))
 
         self.decoration = 'profile={0}, {1}, level={2}, sps/pps:{3} {4}'\
-            .format(self.profile_ind, self.profile_com, self.level, spsb64, ppsb64)
+            .format(self.profile_ind,
+                    self.profile_compat,
+                    self.level,
+                    spsb64,
+                    ppsb64)
 
         self.sps = sps_bin_str
         self.pps = pps_bin_str
+        self.sps_bytes = sps_vec
+        self.pps_bytes = pps_vec
+
 
 def read_hex(reader, bytes):
     vec = []
@@ -899,6 +972,7 @@ def read_hex(reader, bytes):
         vec.append(reader.send('>B')[0])
     hex_str = ''.join(['%02x' % c for c in vec])
     return hex_str
+
 
 class hvcC_box(box):
     def __init__(self, *args):
@@ -982,6 +1056,7 @@ class hvcC_box(box):
         except Exception as e:
             return e
 
+
 class stsd_box(full_box):
     def __init__(self, *args):
         full_box.__init__(self, *args)
@@ -1001,14 +1076,17 @@ class stsd_box(full_box):
             ret += ' - ' + child.description().replace('\n', '\n - ')[:-3]
         return ret
 
+
 class sinf_box(box):
     def __init__(self, *args):
         box.__init__(self, *args)
+
 
 class frma_box(box):
     def __init__(self, *args):
         box.__init__(self, *args)
         self.decoration = 'data format:%s' % (self.fmap[self.offset + 8 : self.offset + 12])
+
 
 class schm_box(full_box):
     def __init__(self, *args):
@@ -1018,9 +1096,11 @@ class schm_box(full_box):
         minor_version = struct.unpack('>H', self.fmap[self.offset+18:self.offset+20])[0]
         self.decoration = 'type:{0} version:{1}.{2}'.format(type, major_version, minor_version)
 
+
 class schi_box(box):
     def __init__(self, *args):
         box.__init__(self, *args)
+
 
 class tenc_box(full_box):
     def __init__(self, *args):
@@ -1047,6 +1127,7 @@ class tenc_box(full_box):
             ret = 'enc:{0}'.format(self.is_encrypted)
         return ret
 
+
 class tkhd_box(full_box):
     def __init__(self, *args):
         full_box.__init__(self, *args)
@@ -1072,6 +1153,7 @@ class tkhd_box(full_box):
     def track_id(self):
         return self._track_id
 
+
 class mdhd_box(full_box):
     def __init__(self, *args):
         full_box.__init__(self, *args)
@@ -1081,8 +1163,17 @@ class mdhd_box(full_box):
         self.modification_time = i.send(self.version and '>Q' or '>I')[0]
         self.timescale = i.send('>I')[0]
         self.duration = i.send(self.version and '>Q' or '>I')[0]
-        self.decoration = 'tscale:%d dur:%d (=%.3f sec)' % \
-            (self.timescale, self.duration, self.duration / float(self.timescale))
+        lang = i.send('>H')[0]
+        lang_1 = ((lang >> 10) & 0x1f) + 0x60
+        lang_2 = ((lang >> 5) & 0x1f) + 0x60
+        lang_3 = (lang & 0x1f) + 0x60
+        language = chr(lang_1) + chr(lang_2) + chr(lang_3)
+        self.decoration = 'tscale:%d dur:%d (=%.3f sec) language=%s' % \
+            (self.timescale,
+             self.duration,
+             self.duration / float(self.timescale),
+             language)
+
 
 class hdlr_box(full_box):
     def __init__(self, *args):
@@ -1099,13 +1190,14 @@ class hdlr_box(full_box):
 
         rest = self.size - 12 - 5 * 4
         encoding_name = ''
-        for k in range(rest):
+        for k in range(rest-1):
             encoding_name += chr(i.send('>B')[0])
 
         self.decoration = 'type={0} name={1}'.format(handler_type, encoding_name)
 
         self.handler_type = handler_type
         self.encoding_name = encoding_name
+
 
 class moof_box(box):
     def __init__(self, fmap, box_type, size, offset, parent=None):
@@ -1125,6 +1217,7 @@ class moof_box(box):
         # mdat = [obj for obj in self.parent.children[pindex:] if obj.type == 'mdat']
         # return len(mdat) and mdat[0] or None
 
+
 class trex_box(full_box):
     def __init__(self, *args):
         full_box.__init__(self, *args)
@@ -1136,6 +1229,7 @@ class trex_box(full_box):
         self.default_sample_flags = i.next()[0]
 
         self.decoration = 'track_id:%d dur:%d' % (self.track_id, self.default_sample_duration)
+
 
 class mfhd_box(box):
     def __init__(self, *args):
@@ -1172,9 +1266,9 @@ class mfhd_box(box):
         return self.get_track_sample_count(track)
 
     def description(self):
-        # self.decoration = 'seqno:%d vdur:%f adur:%f' % (self.seqno, self.video_duration, self.audio_duration)
         self.decoration = 'seqno:%d' % (self.seqno)
         return box.description(self)
+
 
 class tfhd_box(full_box):
     def __init__(self, *args):
@@ -1231,6 +1325,7 @@ class tfhd_box(full_box):
     @property
     def decoration(self):
         return self.msg
+
 
 class trun_box(full_box):
     def __init__(self, *args):
@@ -1289,7 +1384,7 @@ class trun_box(full_box):
         row = {}
         offset = self.offset + self.sample_array_offset + i * self.sample_row_size
         if self.has_sample_duration:
-            row['dur'] = struct.unpack('>I', self.fmap[offset:offset+4])[0]
+            row['duration'] = struct.unpack('>I', self.fmap[offset:offset+4])[0]
             offset += 4
         if self.has_sample_size:
             row['size'] = struct.unpack('>I', self.fmap[offset:offset+4])[0]
@@ -1323,7 +1418,7 @@ class trun_box(full_box):
                 row = {}
                 offset = self.offset + self.sample_array_offset + i * self.sample_row_size
                 if self.has_sample_duration:
-                    row['dur'] = struct.unpack('>I', self.fmap[offset:offset+4])[0]
+                    row['duration'] = struct.unpack('>I', self.fmap[offset:offset+4])[0]
                     offset += 4
                 if self.has_sample_size:
                     row['size'] = struct.unpack('>I', self.fmap[offset:offset+4])[0]
@@ -1338,6 +1433,7 @@ class trun_box(full_box):
                 ret += ' - ' + ' '.join(['%s:%s' % (k, v) for k, v in row.iteritems()]) + '\n'
 
         return ret
+
 
 class tfra_box(full_box):
     def __init__(self, *args):
@@ -1496,14 +1592,17 @@ class tfra_box(full_box):
 
         return extras + ''.join(entries)[:-1]
 
+
 class mfro_box(full_box):
     @property
     def decoration(self):
         return 'size:%d' % struct.unpack('>I', self.fmap[self.offset+12:self.offset+16])[0]
 
+
 class stbl_box(box):
     def __init__(self, *args):
         box.__init__(self, *args)
+
 
 class stts_box(full_box):
     def __init__(self, *args):
@@ -1530,6 +1629,7 @@ class stts_box(full_box):
                 self.array.append({'time' : time, 'delta' : delta})
                 time = time + delta
 
+
 class ctts_box(full_box):
     def __init__(self, *args):
         full_box.__init__(self, *args)
@@ -1553,6 +1653,7 @@ class ctts_box(full_box):
             for i in range(entry['sample_count']):
                 self.array.append(offset)
 
+
 class stss_box(full_box):
     def __init__(self, *args):
         full_box.__init__(self, *args)
@@ -1571,6 +1672,7 @@ class stss_box(full_box):
                 return True
         return False
 
+
 class stsz_box(full_box):
     def __init__(self, *args):
         full_box.__init__(self, *args)
@@ -1586,6 +1688,7 @@ class stsz_box(full_box):
 
     def entry(self, index):
         return self._entries[index]
+
 
 class stsc_box(full_box):
     def __init__(self, *args):
@@ -1644,6 +1747,7 @@ class stsc_box(full_box):
         for i in range(num_samples):
             self.array.append([last_chunk + 1, i, num_samples])
 
+
 class stco_box(full_box):
     def __init__(self, *args):
         full_box.__init__(self, *args)
@@ -1658,6 +1762,7 @@ class stco_box(full_box):
 
     def entry(self, index):
         return self._entries[index]
+
 
 class ftyp_box(box):
     def __init__(self, *args):
@@ -1679,6 +1784,7 @@ class ftyp_box(box):
         ret = self.major_brand + ' ' + ','.join(brand for brand in self.brands)
         return ret
 
+
 class styp_box(box):
     def __init__(self, *args):
         box.__init__(self, *args)
@@ -1699,6 +1805,7 @@ class styp_box(box):
         ret = self.major_brand + ' ' + ','.join(brand for brand in self.brands)
         return ret
 
+
 class tfma_box(full_box):
     def __init__(self, *args):
         full_box.__init__(self, *args)
@@ -1716,7 +1823,7 @@ class tfma_box(full_box):
             self._entries.append({'segment-duration' : segment_duration,
                                   'media-time' : media_time,
                                   'media-rate-integer' : media_rate_integer,
-                                  'media-rate-fraction' : media_rate_fraction}) 
+                                  'media-rate-fraction' : media_rate_fraction})
 
     def entry(self, index):
         return self._entries[index]
@@ -1729,9 +1836,11 @@ class tfma_box(full_box):
                 .format(entry['segment-duration'], entry['media-time'], entry['media-rate-integer'])
         return ret
 
+
 class tfad_box(box):
     def __init__(self, *args):
         box.__init__(self, *args)
+
 
 class sidx_box(full_box):
     def __init__(self, *args):
@@ -1789,13 +1898,16 @@ class sidx_box(full_box):
             msg = msg + '\n - ' + str(ref)
         return msg
 
+
 class udta_box(box):
     def __init__(self, *args):
         box.__init__(self, *args)
 
+
 class meta_box(box):
     def __init__(self, *args):
         box.__init__(self, *args)
+
 
 class tfdt_box(full_box):
     def __init__(self, *args):
@@ -1808,6 +1920,7 @@ class tfdt_box(full_box):
     @property
     def decoration(self):
         return 'decode_time={0}'.format(self.decode_time)
+
 
 class afra_box(full_box):
     def __init__(self, *args):
@@ -1874,6 +1987,7 @@ class afra_box(full_box):
 
         return first_line + ent + glob_ent
 
+
 class asrt_box(full_box):
     def __init__(self, *args):
         full_box.__init__(self, *args)
@@ -1915,6 +2029,7 @@ class asrt_box(full_box):
             index = index + 1
 
         return msg
+
 
 class afrt_box(full_box):
     def __init__(self, *args):
@@ -1974,6 +2089,7 @@ class afrt_box(full_box):
 
         return msg
 
+
 def read_string(parser):
     msg = ''
     byte = parser.send('>B')[0]
@@ -1981,6 +2097,7 @@ def read_string(parser):
         msg = msg + chr(byte)
         byte = parser.send('>B')[0]
     return msg
+
 
 class abst_box(full_box):
     def __init__(self, *args):
@@ -2099,6 +2216,17 @@ class mdat_box(box):
                     print 'trackid: {0} base_offset: {1} trun_offset: {2} row: {3}'\
                         .format(tfhd.track_id, base_data_offset, trun_offset, str(row))
 
+
+class payl_box(box):
+    def __init__(self, *args):
+        box.__init__(self, *args)
+        self.cue_text = self.fmap[self.offset + 8:self.offset + self.size]
+
+    @property
+    def decoration(self):
+        return 'tfxd: time={0} dur={1}'.format(self.time, self.duration)
+
+
 class tfxd_box(object):
     def __init__(self, data, version, flags):
         self.data = data
@@ -2114,6 +2242,7 @@ class tfxd_box(object):
     @property
     def decoration(self):
         return 'tfxd: time={0} dur={1}'.format(self.time, self.duration)
+
 
 class tfrf_box(object):
     def __init__(self, data, version, flags):
@@ -2139,12 +2268,16 @@ class tfrf_box(object):
             msg = msg + ' time={0} dur={1}'.format(self.times[i], self.durations[i])
         return msg
 
+
 class sampleEncryption_box(object):
     def __init__(self, data, version, flags, iv_size=8):
         self.data = data
         self.version = version
         self.flags = flags
         self.iv_size = iv_size
+
+        self.ivs = []
+        self.sub_sample_vec = []
 
     @property
     def decoration(self):
@@ -2165,9 +2298,11 @@ class sampleEncryption_box(object):
 
         for sample in range(sample_count):
             iv = ''.join(["%02X" % ord(x) for x in self.data[base_offset:base_offset + self.iv_size]])
+            self.ivs.append(iv) # NOTE: this should be done in the constructor
             msg += '\n - - #{0} iv=0x{1}'.format(sample, iv)
             base_offset += self.iv_size
             if self.flags & 0x02:
+                sub_samples = []
                 entries = struct.unpack('>H', self.data[base_offset:base_offset + 2])[0]
                 base_offset += 2
                 for e in range(entries):
@@ -2177,7 +2312,11 @@ class sampleEncryption_box(object):
                     base_offset += 4
                     msg += '\n - - - #{0} clear={1} encrypted={2}'.format(e, clear_data, enc_data)
 
+                    sub_samples.append([clear_data, enc_data])
+                self.sub_sample_vec.append(sub_samples)
+
         return msg
+
 
 class trackEncryption_box(object):
     def __init__(self, data, version, flags):
@@ -2199,6 +2338,7 @@ class trackEncryption_box(object):
         base_offset += 16
 
         return msg
+
 
 class pssh_uuid_box(object):
     def __init__(self, data, version, flags):
@@ -2229,6 +2369,7 @@ tfrfGuid = 'D4807EF2CA3946958E5426CB9E46A79F'
 sampleEncryptionGuid = 'A2394F525A9B4F14A2446C427C648DF4'
 trackEncryptionGuid = "8974DBCE7BE74C5184F97148F9882554"
 psshGuid = "D08A4F1810F34A82B6C832D8ABA183D3"
+
 
 class uuid_box(full_box):
     def __init__(self, *args):
@@ -2261,6 +2402,7 @@ class uuid_box(full_box):
         else:
             print 'unknown uuid tag', msg
         return
+
 
 class sdtp_box(full_box):
     def __init__(self, *args):
@@ -2327,6 +2469,7 @@ class sdtp_box(full_box):
 
         return msg
 
+
 class emsg_box(full_box):
     def __init__(self, *args):
         full_box.__init__(self, *args)
@@ -2363,6 +2506,6 @@ for key in keys:
         #print 'adding: ', k
         REGISTERED_BOXES[key] = globals()[key]
 
+
 if __name__ == '__main__':
     pass
-
