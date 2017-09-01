@@ -53,6 +53,7 @@ class MP4Filter(object):
             self.data = data
         self.output = ""
         self.relevant_boxes = [] # Boxes at top-level to filter_top_boxes
+        self.top_level_boxes = []  # List of top_level boxes (size, type)
         #print "MP4Filter with %s" % file_name
 
     def check_box(self, data):
@@ -68,9 +69,11 @@ class MP4Filter(object):
         pos = 0
         while pos < len(self.data):
             size, box_type = self.check_box(self.data[pos:pos + 8])
+            self.top_level_boxes.append((size, box_type))
             box_data = self.data[pos:pos+size]
             if box_type in self.relevant_boxes:
-                self.output += self.filterbox(box_type, box_data, len(self.output))
+                self.output += self.filterbox(box_type, box_data,
+                                              len(self.output))
             else:
                 self.output += box_data
             pos += size
