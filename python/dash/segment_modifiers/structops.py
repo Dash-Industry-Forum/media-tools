@@ -31,6 +31,10 @@
 
 from struct import pack, unpack
 
+def str_to_uint16(string2):
+    "2-character string to unsigned int16."
+    return unpack(">H", string2)[0]
+
 def str_to_uint32(string4):
     "4-character string to unsigned int32."
     return unpack(">I", string4)[0]
@@ -42,6 +46,10 @@ def str_to_sint32(string4):
 def str_to_uint64(string8):
     "8-character string to unsigned int64."
     return unpack(">Q", string8)[0]
+
+def uint16_to_str(uint16):
+    "Unsigned int16 to string."
+    return pack(">H", uint16)
 
 def uint32_to_str(uint32):
     "Unsigned int32 to string."
