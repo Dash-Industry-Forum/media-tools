@@ -62,7 +62,6 @@ class SampleMetadataExtraction(MP4Filter):
         self.samples = []
         self.last_moof_start = 0
         self.styp = ""  # styp box, if any
-        self.sidx_start = ""  # The sidx startdata before reference_count
         self.tfhd = ""
         self.tfdt_size = None
         self.trun_base_size = None  # Base size for trun
@@ -140,7 +139,6 @@ class SampleMetadataExtraction(MP4Filter):
         if first_offset != 0:
             raise ValueError("Only supports first_offset == 0")
         pos += 2
-        self.sidx_start = data[:pos]  # Up until reference_count
         reference_count = str_to_uint16(data[pos:pos+2])
         pos += 2
         for i in range(reference_count):
@@ -282,12 +280,14 @@ class SampleMetadataExtraction(MP4Filter):
 class Resegmenter(object):
     "Resegment a CMAF track into a new output track."
 
-    def __init__(self, input_file, duration_ms, output_file, verbose):
+    def __init__(self, input_file, duration_ms, output_file,
+                 skip_sidx=False, verbose=False):
         self.input_file = input_file
         self.duration_ms = duration_ms
         self.output_file = output_file
         self.verbose = verbose
         self.input_parser = None
+        self.skip_sidx = skip_sidx
         self.sidx_range = ""
 
     def resegment(self):
@@ -318,13 +318,13 @@ class Resegmenter(object):
             with open(self.output_file, "wb") as ofh:
                 input_header_end = self.input_parser.find_header_end()
                 ofh.write(ip.data[:input_header_end])
-                if self.input_parser.sidx_start:
-                    sidx_start = input_header_end
+                if not self.skip_sidx:
                     sidx = self._generate_sidx(segment_info, segment_sizes,
                                                timescale)
+                    ofh.write(sidx)
+                    sidx_start = input_header_end
                     self.sidx_range = "%d-%d" % (sidx_start,
                                                  sidx_start + len(sidx) - 1)
-                    ofh.write(sidx)
                 for output_segment in output_segments:
                     ofh.write(output_segment)
 
@@ -524,10 +524,15 @@ def main():
                         dest="verbose",
                         help="Verbose mode")
 
+    parser.add_argument("-s", "--skip_sidx",
+                        action="store_true",
+                        dest="skip_sidx",
+                        help="Do not write sidx box to output")
+
     args = parser.parse_args()
 
     resegmenter = Resegmenter(args.input_file, args.duration,
-                              args.output_file,
+                              args.output_file, args.skip_sidx,
                               args.verbose)
     resegmenter.resegment()
 
