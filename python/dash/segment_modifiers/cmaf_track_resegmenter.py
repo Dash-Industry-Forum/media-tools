@@ -32,6 +32,7 @@ Useful to get audio segments with a specified average duration."""
 #  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 #  POSSIBILITY OF SUCH DAMAGE.
 
+import os
 from argparse import ArgumentParser
 from collections import namedtuple
 
@@ -39,11 +40,12 @@ from structops import str_to_uint16, uint16_to_str, uint32_to_str
 from structops import str_to_uint32, str_to_uint64, uint64_to_str
 from mp4filter import MP4Filter
 
+BACKUP_FILE_SUFFIX = "_bup"
+
 
 SegmentData = namedtuple("SegmentData", "nr start dur size data")
 SampleData = namedtuple("SampleData", "start dur size offset flags cto")
 SegmentInfo = namedtuple("SegmentInfo", "start_nr end_nr start_time dur")
-
 
 
 class SampleMetadataExtraction(MP4Filter):
@@ -292,6 +294,8 @@ class Resegmenter(object):
 
     def resegment(self):
         "Resegment the track with new duration."
+
+
         self.input_parser = SampleMetadataExtraction(self.input_file,
                                                      self.verbose)
         ip = self.input_parser
@@ -315,6 +319,8 @@ class Resegmenter(object):
             output_segments.append(output_segment)
             segment_sizes.append(len(output_segment))
         if self.output_file:
+            if self.output_file == self.input_file:
+                move_file_to_backup(self.input_file)
             with open(self.output_file, "wb") as ofh:
                 input_header_end = self.input_parser.find_header_end()
                 ofh.write(ip.data[:input_header_end])
@@ -494,6 +500,11 @@ class Resegmenter(object):
             if self.sample_flags & 0x800:
                 output += uint32_to_str(sample.cto)
         return output
+
+
+def move_file_to_backup(file_path):
+    backup_file = file_path + BACKUP_FILE_SUFFIX
+    os.rename(file_path, backup_file)
 
 
 def main():
