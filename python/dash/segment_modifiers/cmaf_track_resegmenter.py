@@ -62,7 +62,6 @@ class SampleMetadataExtraction(MP4Filter):
         self.samples = []
         self.last_moof_start = 0
         self.styp = ""  # styp box, if any
-        self.sidx_start = ""  # The sidx startdata before reference_count
         self.tfhd = ""
         self.tfdt_size = None
         self.trun_base_size = None  # Base size for trun
@@ -140,7 +139,6 @@ class SampleMetadataExtraction(MP4Filter):
         if first_offset != 0:
             raise ValueError("Only supports first_offset == 0")
         pos += 2
-        self.sidx_start = data[:pos]  # Up until reference_count
         reference_count = str_to_uint16(data[pos:pos+2])
         pos += 2
         for i in range(reference_count):
@@ -177,28 +175,24 @@ class SampleMetadataExtraction(MP4Filter):
         return data
 
     def process_tfhd(self, data):
-        "Check flags and set default values."
-        flags = str_to_uint32(data[12:16]) & 0xffffff
-        pos = 12
-        if flags & 0x0001:  # has_data_offset
-            data_offset = str_to_uint32(data[pos:pos+4])
-            pos += 4
-        if flags & 0x0004:  # first_sample_flags
-            self.first_sample_flags = str_to_uint32(data[pos:pos+4])
-            pos +=4
-        if flags & 0x0100:  # sample_duration
+        """Check flags and set default values.
+
+        We are only interested in some values."""
+        tf_flags = str_to_uint32(data[8:12]) & 0xffffff
+        self.track_id = str_to_uint32(data[12:16])
+        pos = 16
+        if tf_flags & 0x000001:  # base_data_offset_present
+            base_data_offset = str_to_uint64(data[pos:pos+8])
+            pos += 8
+        if tf_flags & 0x000009:  # default_sample_duration_present
             self.default_sample_duration = str_to_uint32(data[pos:pos+4])
             pos += 4
-        if flags & 0x0200:  # sample_size
+        if tf_flags & 0x000010:  # default_sample_size_present
             self.default_sample_size = str_to_uint32(data[pos:pos+4])
             pos += 4
-        if flags & 0x0400:  # sample_flags
-            self.default_sample_flags = str_to_uint32(data[pos:pos+4])
+        if tf_flags & 0x000020:  # default_sample_flags_present
+            self.default_sample_size = str_to_uint32(data[pos:pos+4])
             pos += 4
-        if flags & 0x0800:  # sample_composition_time_offset
-            self.default_sample_cto = str_to_uint32(data[pos:pos+4])
-            pos += 4
-        self.tfhd = data
         return data
 
     def process_tfdt(self, data):
@@ -231,7 +225,8 @@ class SampleMetadataExtraction(MP4Filter):
             pos += 4
             raise ValueError("Cannot handle first_sample_flag")
         self.trun_base_size = pos  # How many bytes this far
-        self.trun_sample_flags = flags
+        if self.trun_sample_flags is None:
+            self.trun_sample_flags = flags
         for i in range(sample_count):
             sample_duration = self.default_sample_duration
             sample_size = self.default_sample_size
@@ -249,6 +244,8 @@ class SampleMetadataExtraction(MP4Filter):
             if flags & 0x800:  # composition_time_offset present
                 cto = str_to_uint32(data[pos:pos + 4])
                 pos += 4
+            if cto is None:
+                cto = 0
             sample = SampleData(start, sample_duration, sample_size,
                                 data_offset, sample_flags, cto)
             self.samples.append(sample)
@@ -267,19 +264,6 @@ class SampleMetadataExtraction(MP4Filter):
             header_end += size
         return header_end
 
-    def bytes_of_trun_sample_data(self):
-        "Return nr bytes per sample in trun table depedning on flags."
-        nr = 0
-        if self.trun_sample_flags & 0x100:
-            nr += 4
-        if self.trun_sample_flags & 0x200:
-            nr += 4
-        if self.trun_sample_flags & 0x400:
-            nr += 4
-        if self.trun_sample_flags & 0x800:
-            nr += 4
-        return nr
-
     def construct_new_mdat(self, media_info):
         "Return an mdat box with data for samples in media_info."
         start_nr = media_info.start_nr
@@ -296,12 +280,15 @@ class SampleMetadataExtraction(MP4Filter):
 class Resegmenter(object):
     "Resegment a CMAF track into a new output track."
 
-    def __init__(self, input_file, duration_ms, output_file, verbose):
+    def __init__(self, input_file, duration_ms, output_file,
+                 skip_sidx=False, verbose=False):
         self.input_file = input_file
         self.duration_ms = duration_ms
         self.output_file = output_file
         self.verbose = verbose
         self.input_parser = None
+        self.skip_sidx = skip_sidx
+        self.sidx_range = ""
 
     def resegment(self):
         "Resegment the track with new duration."
@@ -309,24 +296,37 @@ class Resegmenter(object):
                                                      self.verbose)
         ip = self.input_parser
         ip.filter_top_boxes()
+        timescale = ip.track_timescale
         if self.verbose:
             for i, segment in enumerate(ip.input_segments):
                 print("Input segment %d: dur=%d" % (i + 1,
                                                     segment['duration']))
-        input_header_end = self.input_parser.find_header_end()
-        output = ip.data[:input_header_end]
+
         segment_info = self._map_samples_to_new_segments()
-        segment_sizes = self. _calculate_segment_sizes(segment_info)
-        if self.input_parser.sidx_start:
-            output += self._generate_sidx(segment_info, segment_sizes)
+        self.track_id = ip.track_id
+        output_segments = []
+        segment_sizes = []
         for i, seg_info in enumerate(segment_info):
+            output_segment = ""
             if ip.styp:
-                output += ip.styp
-            output += self._generate_moof(i+1, seg_info)
-            output += ip.construct_new_mdat(seg_info)
+                output_segment += ip.styp
+            output_segment += self._generate_moof(i+1, seg_info)
+            output_segment += ip.construct_new_mdat(seg_info)
+            output_segments.append(output_segment)
+            segment_sizes.append(len(output_segment))
         if self.output_file:
             with open(self.output_file, "wb") as ofh:
-                ofh.write(output)
+                input_header_end = self.input_parser.find_header_end()
+                ofh.write(ip.data[:input_header_end])
+                if not self.skip_sidx:
+                    sidx = self._generate_sidx(segment_info, segment_sizes,
+                                               timescale)
+                    ofh.write(sidx)
+                    sidx_start = input_header_end
+                    self.sidx_range = "%d-%d" % (sidx_start,
+                                                 sidx_start + len(sidx) - 1)
+                for output_segment in output_segments:
+                    ofh.write(output_segment)
 
     def _map_samples_to_new_segments(self):
         "Calculate which samples go into which segments."
@@ -362,82 +362,136 @@ class Resegmenter(object):
               (len(new_segment_info),  len(self.input_parser.input_segments)))
         return new_segment_info
 
-    def _calculate_traf_size(self, nr_samples):
-        ip = self.input_parser
-        moof_size = 8 + 16 + ip.tfdt_size + ip.trun_base_size
-        moof_size += nr_samples * ip.bytes_of_trun_sample_data()
-        return moof_size
-
-    def _calculate_moof_size(self, nr_samples):
-        return 8 + 16 + self._calculate_traf_size(nr_samples)
-
-    def _calculate_segment_sizes(self, segment_info):
-        "Calculate the size of every segment (for sidx)."
-        sizes = []
-        ip = self.input_parser
-        for info in segment_info:
-            styp_size = len(ip.styp)
-            moof_size = self._calculate_moof_size(info.end_nr - info.start_nr)
-            mdat_size = 8
-            for sample in ip.samples[info.start_nr:info.end_nr]:
-                mdat_size += sample.size
-            seg_size = styp_size + moof_size + mdat_size
-            sizes.append(seg_size)
-        return sizes
-
-    def _generate_sidx(self, segment_info, segment_sizes):
-        "Generate updated sidx box."
-        output = self.input_parser.sidx_start
-        output += uint16_to_str(len(segment_sizes))
+    def _generate_sidx(self, segment_info, segment_sizes, timescale):
+        "Generate sidx box."
+        earliest_presentation_time = segment_info[0].start_time
+        parts = ['sidx',
+                 uint32_to_str(0), # version + flags
+                 uint32_to_str(1), # reference_ID
+                 uint32_to_str(timescale),
+                 uint32_to_str(earliest_presentation_time),
+                 uint32_to_str(0),  # first_offset
+                 uint16_to_str(0),  # reserved
+                 uint16_to_str(len(segment_sizes))]  # reference_count
         for info, size in zip(segment_info, segment_sizes):
-            output += uint32_to_str(size)  # Setting reference type to 0
-            output += uint32_to_str(info.dur)
-            output += uint32_to_str(0x90000000)
-        size = len(output)
-        output = uint32_to_str(size) + output[4:]
+            parts.append(uint32_to_str(size))  # Setting reference type to 0
+            parts.append(uint32_to_str(info.dur))
+            parts.append(uint32_to_str(0x90000000)) # SAP info
+        output = ''.join(parts)
+        size = 4 + len(output)
+        output = uint32_to_str(size) + output
         return output
 
     def _generate_moof(self, sequence_nr, seg_info):
         "Generate a moof box with the correct sample entries"
+        mfhd = self._generate_mfhd(sequence_nr)
+        offset = 8 + len(mfhd)
+        traf = self._generate_traf(seg_info, offset)
+        size = 8 + len(mfhd) + len(traf)
+        return uint32_to_str(size) + 'moof' + mfhd + traf
+
+    def _generate_mfhd(self, sequence_nr):
+        return (uint32_to_str(16) +  # size
+                'mfhd' +
+                uint32_to_str(0) +  # version_and_flags
+                uint32_to_str(sequence_nr))
+
+    def _generate_traf(self, seg_info, offset):
+        tfhd = self._generate_tfhd(seg_info, self.track_id)
+        tfdt = self._generate_tfdt(seg_info)
+        offset += 8 + len(tfhd) + len(tfdt)
+        trun = self._generate_trun(seg_info, offset)
+        size = 8 + len(tfhd) + len(tfdt) + len(trun)
+        return uint32_to_str(size) + 'traf' + tfhd + tfdt + trun
+
+    def _generate_tfhd(self, seg_info, track_id):
         ip = self.input_parser
-        nr_samples = seg_info.end_nr - seg_info.start_nr
-        moof_size = self._calculate_moof_size(nr_samples)
-        output = uint32_to_str(moof_size) + 'moof'
-        output += (uint32_to_str(16) + 'mfhd' + uint32_to_str(0) +
-                   uint32_to_str(sequence_nr))
-        traf_size = self._calculate_traf_size(nr_samples)
-        output += uint32_to_str(traf_size) + 'traf'
-        output += ip.tfhd
-        output += uint32_to_str(ip.tfdt_size) + 'tfdt'
-        if ip.tfdt_size == 16:
+        first_sample = ip.samples[seg_info.start_nr]
+        common_size = first_sample.size
+        common_dur = first_sample.dur
+        common_flags = first_sample.flags
+        common_cto = first_sample.cto
+        for sample in ip.samples[seg_info.start_nr + 1:seg_info.end_nr]:
+            if sample.dur != common_dur:
+                common_dur = None
+            if sample.size != common_size:
+                common_size = None
+            if sample.flags != common_flags:
+                common_flags = None
+            if sample.cto != common_cto:
+                common_cto = None
+        flags = 0x020000
+        data = ""
+        sample_flags = 0  # Which individual sample data is needed
+        if common_dur is not None:
+            flags |= 0x08
+            data += uint32_to_str(common_dur)
+        else:
+            sample_flags |= 0x100
+        if common_size is not None:
+            flags |= 0x10
+            data += uint32_to_str(common_size)
+        else:
+            sample_flags |= 0x200
+        if common_flags is not None:
+            flags |= 0x20
+            data += uint32_to_str(common_flags)
+        else:
+            sample_flags |= 0x400
+        if common_cto is None or common_cto != 0:
+            sample_flags |= 0x800
+        size = 16 + len(data)
+        self.sample_flags = sample_flags
+
+        version_and_flags = flags
+        return (uint32_to_str(size) + 'tfhd' +
+                uint32_to_str(version_and_flags) +
+                uint32_to_str(track_id) + data)
+
+    def _generate_tfdt(self, seg_info):
+        if seg_info.start_time > 2 ** 30:
+            version = 1
+            size = 20
+        else:
+            version = 0
+            size = 16
+        output = uint32_to_str(size) + 'tfdt'
+        if version == 0:
             output += uint32_to_str(0x00000000) + uint32_to_str(
                 seg_info.start_time)
         else:
             output += uint32_to_str(0x01000000) + uint64_to_str(
                 seg_info.start_time)
-        output += self._generate_trun_box(seg_info, moof_size)
         return output
 
-    def _generate_trun_box(self, seg_info, moof_size, version=0):
+    def _generate_trun(self, seg_info, offset):
         "Generate trun box with correct sample data for segment."
+
+        def nr_sample_bytes(sample_flags):
+            nr_bytes = 0
+            for pattern in (0x100, 0x200, 0x400, 0x800):
+                if sample_flags & pattern != 0:
+                    nr_bytes += 4
+            return nr_bytes
+        version = 0
         ip = self.input_parser
-        sample_flags = ip.trun_sample_flags
-        sample_data_size = ip.bytes_of_trun_sample_data()
+        sample_data_size = nr_sample_bytes(self.sample_flags)
         sample_count = seg_info.end_nr - seg_info.start_nr
         trun_size = 20 + sample_count * sample_data_size
         output = uint32_to_str(trun_size) + 'trun'
-        version_and_flags = (version << 24) | sample_flags
+        flags = self.sample_flags | 0x01  # offset present
+        version_and_flags = (version << 24) | flags
         output += uint32_to_str(version_and_flags)
         output += uint32_to_str(sample_count)
-        output += uint32_to_str(moof_size + 8) # 8 bytes into mdat
+        output += uint32_to_str(offset + trun_size + 8) # 8 bytes into mdat
         for sample in ip.samples[seg_info.start_nr:seg_info.end_nr]:
-            if sample_flags & 0x100:
+            if self.sample_flags & 0x100:
                 output += uint32_to_str(sample.dur)
-            if sample_flags & 0x200:
+            if self.sample_flags & 0x200:
                 output += uint32_to_str(sample.size)
-            if sample_flags & 0x400:
+            if self.sample_flags & 0x400:
                 output += uint32_to_str(sample.flags)
-            if sample_flags & 0x800:
+            if self.sample_flags & 0x800:
                 output += uint32_to_str(sample.cto)
         return output
 
@@ -470,10 +524,15 @@ def main():
                         dest="verbose",
                         help="Verbose mode")
 
+    parser.add_argument("-s", "--skip_sidx",
+                        action="store_true",
+                        dest="skip_sidx",
+                        help="Do not write sidx box to output")
+
     args = parser.parse_args()
 
     resegmenter = Resegmenter(args.input_file, args.duration,
-                              args.output_file,
+                              args.output_file, args.skip_sidx,
                               args.verbose)
     resegmenter.resegment()
 
