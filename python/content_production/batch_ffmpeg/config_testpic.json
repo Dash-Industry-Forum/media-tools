@@ -4,11 +4,12 @@
         "resolution" : "640x360", 
         "frameRate" : 30,
         "gopLength" : 30,
-        "segmentDuration" : 1,
+        "segmentDurationMs" : 1000,
         "variants" : [{"name" : "V300", "vrate" : 300, "resolution" : "640x360"}]
     },
     {
         "contentType" : "audio",
+        "language": "eng",
         "variants" : [{"name" : "A48", "arate" : 48}]
     }
 ]
