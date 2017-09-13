@@ -5,7 +5,8 @@
         "resolution" : "1280x720", 
         "frameRate" : 30,
         "gopLength" : 60,
-        "segmentDuration" : 2,
+        "segmentDurationMs" : 2000,
+        "language": "eng",
         "variants" : [{"name" : "muxed", "vrate" : 400, "arate" : 64, "resolution": "640x360"}]
     }
 ]

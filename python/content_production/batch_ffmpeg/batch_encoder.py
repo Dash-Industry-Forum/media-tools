@@ -1,7 +1,9 @@
 #!/usr/bin/env python
-"""Batch encoder that can encode files into many different variants using ffmpeg.
+"""Batch encoder of mp4 files into many different variants using ffmpeg.
 
-Supports H.264/AVC and H.265/HEVC + AAC."""
+Supports H.264/AVC and H.265/HEVC + AAC.
+Config files shall be in JSON format, see examples provided.
+"""
 
 # The copyright in this software is being made available under the BSD License,
 # included below. This software may be subject to other third party and contributor
@@ -60,7 +62,8 @@ def make_x264_options(video_values):
     From these some extra values are calculated."""
     values = video_values.copy()
     values['vbv-maxrate'] = int(values['vrate']*1.15)
-    values['vbv-bufsize'] = int(values['vrate']*values['segmentDuration'])
+    values['vbv-bufsize'] = int(values['vrate']*values['segmentDurationMs']
+                                * 0.001)
     options = ['-c:v libx264 -profile:v high -flags +cgop -r %(frameRate)d']
     # Note that bitrates are in kbps (with k = 1000)
     options.append(' -x264opts bitrate=%(vrate)d:vbv-maxrate=%(vbv-maxrate)d:vbv-bufsize=%(vbv-bufsize)d')
@@ -111,7 +114,8 @@ def make_audio_filter(job):
 # The bitrate can be varied though
 
 # Currently using AAC_LC since we do not fully have HE-AAC v2 support yet
-AUDIO_OPTIONS = "-b:a %(arate)dk -ar 48000 -ac 2 -acodec libfdk_aac"
+AUDIO_OPTIONS = " -metadata:s:a:0 language=%(language)s -b:a %(arate)dk -ar " \
+                "48000 -ac 2 -acodec libfdk_aac"
 #AUDIO_OPTIONS = "-b:a %(arate)dk -ar 48000 -ac 2 -acodec libfdk_aac -profile:a aac_he"
 #AUDIO_OPTIONS = "-b:a %(arate)dk -ar 48000 -ac 2 -acodec libfdk_aac -profile:a aac_he_v2"
 #AUDIO_OPTIONS = "-strict -2 -c:a aac -b:a %(arate)dk -ar 48000 -ac 2"
@@ -229,6 +233,57 @@ class BatchEncoder(object):
         "Get the number of jobs."
         return len(self.jobs)
 
+
+def validate_framerate_gop_segment_duration(json_data):
+    """Validate that we can get exactly the segment duration that is asked for.
+
+    For 29.97 and 59.94, we only support gop_durations which are multiples
+    of 30 (60) frames, which result in segment_durations being a multiple
+    of 1001 ms."""
+
+    def is_close(a, b):
+        return abs(a - b) < 1e-8
+
+    frame_rate = json_data['frameRate']
+    gop_length = json_data['gopLength']
+    seg_dur_ms = json_data['segmentDurationMs']
+    if is_close(frame_rate, 29.97):
+        mul30, remainder = divmod(gop_length, 30)
+        if remainder != 0:
+            raise ValueError("For 29.97Hz video, only GoP durations nx30 are allowed")
+        if seg_dur_ms != mul30 * 1001:
+            raise ValueError("Segment duration is not a multiple of 1001")
+        return
+    if is_close(frame_rate, 59.94):
+        mul60, remainder = divmod(gop_length, 60)
+        if remainder != 0:
+            raise ValueError(
+                "For 59.94Hz video, only GoP durations nx60 are allowed")
+        if seg_dur_ms != mul60 * 1001:
+            raise ValueError("Segment duration is not a multiple of 1001")
+        return
+    if frame_rate not in (24, 25, 30, 48, 50, 60):
+        raise ValueError("Framerate %s not supported" % frame_rate)
+
+    gop_dur_ms, remainder = divmod(gop_length * 1000, frame_rate)
+    if remainder != 0:
+        raise ValueError("framerate %s and gop_length %s cannot be expressed in ms" % frame_rate, gop_length)
+    nr_gops_seg, remainder = divmod(seg_dur_ms, gop_dur_ms)
+    if remainder != 0:
+        raise ValueError("Segment duration %dms is not a multiple of gop "
+                         "duration %dms" % (seg_dur_ms, gop_dur_ms))
+
+
+def validate_audio_language(json_data):
+    """Validate that language is present and consists of 3-letter string."""
+    language = json_data.get("language", "").lower()
+    if len(language) != 3:
+        raise ValueError("language must be set to 3-letter code for audio.")
+    for c in language:
+        if ord(c) > ord('z') or ord(c) < ord('a'):
+            raise ValueError("language must be set to 3-letter code for audio.")
+
+
 def parse_config(config_file):
     "Parse a json config file and make a list of all variants to produce with their options."
     txt = open(config_file, "r").read()
@@ -236,6 +291,10 @@ def parse_config(config_file):
     variants = []
     for top_level in json_data:
         data = top_level.copy()
+        if top_level['contentType'] == 'video':
+            validate_framerate_gop_segment_duration(top_level)
+        elif top_level['contentType'] == 'audio':
+            validate_audio_language(top_level)
         del data['variants']
         for variant_specific in top_level['variants']:
             variant = data.copy()
