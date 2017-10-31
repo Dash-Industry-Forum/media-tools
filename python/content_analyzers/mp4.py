@@ -1364,6 +1364,8 @@ class trun_box(full_box):
             self.total_duration = sum([struct.unpack_from('>I', self.fmap, self.offset + self.sample_array_offset + i * self.sample_row_size)[0] for i in range(self.sample_count)])
         else:
             self.total_duration = self.parent.find('tfhd').default_sample_duration * self.sample_count
+        # Note. One may need to go all the way to trex to find the default
+        # values
 
         self.decoration += ' tdur:%d' % self.total_duration
 
@@ -1885,6 +1887,10 @@ class sidx_box(full_box):
 
     def reference_entry(self, index):
         return self._references[index]
+
+    @property
+    def references(self):
+        return self._references
 
     @property
     def decoration(self):
