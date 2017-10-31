@@ -8,8 +8,9 @@ Check that
 * sidx durations agree with the actual subsegments
 * different representations in the same adaptation set are aligned.
 
-Further restrictions are:
+Further restrictions are (should be put in a profile):
 * Text is either TTML or WebVTT as sideloaded files
+* One adaptation set for all video
 
 Return an exit value that is a bitmask combination of
 
@@ -75,7 +76,7 @@ class CMAFTrack(object):
 
     def _find_subsegment_data(self, mp4_root):
         "Find the segments and return size, offset, decode_time, duration"
-        timescale = self.root.find('moov.trak.mdia.mdhd').timescale
+        timescale = mp4_root.find('moov.trak.mdia.mdhd').timescale
         segments = []
         segment = {}
         for top_box in mp4_root.children:
@@ -89,12 +90,14 @@ class CMAFTrack(object):
                     trun = top_box.find('traf.trun')
                     segment['duration'] = trun.total_duration
                     if segment['duration'] == 0:  # Must find values in trex
-                        trex = self.root.find('mvex.trex')
+                        trex = mp4_root.find('moov.mvex.trex')
                         segment['duration'] = (trex.default_sample_duration *
                                                trun.sample_count)
-                    if len(segments) > 0:
+                    nr_segments = len(segments)
+                    if nr_segments > 0:
                         last_seg = segments[-1]
-                        self._check_duration_consistency(segment, last_seg)
+                        self._check_duration_consistency(segment, last_seg,
+                                                         nr_segments)
 
                 elif top_box.type == 'mdat':
                     segments.append(segment)
@@ -103,12 +106,13 @@ class CMAFTrack(object):
                         'segments': segments}
         return segment_data
 
-    def _check_duration_consistency(self, segment, last_seg):
+    def _check_duration_consistency(self, segment, last_seg, nr):
         "Check that last_seg ends at the time segment starts."
         last_end = last_seg['decode_time'] + last_seg['duration']
         if segment['decode_time'] != last_end:
-            log.error("Segment end %d not equal to next segment start %d" %
-                      (last_end, segment['decode_time']))
+            log.error("Segment end %d not equal to next segment start %d for "
+                      "seg nr %d and %d" % (last_end, segment['decode_time'],
+                                            nr, nr + 1))
 
     def _get_sidx_segment_data(self, mp4_root):
         "Return sidx segment data."
@@ -174,13 +178,12 @@ def check_dash_manifest(manifest_path, verbose):
                 raise BadManifestError("Representation id=%s does not have "
                                        "BaseURL", rep.attrib['id'])
             media_type = get_media_type(rep, adaptation_set)
-            if media_type in ('video', 'audio', 'text'):
+            if media_type in ('video', 'audio'):
                 seg_base = rep.find('dash:SegmentBase', ns)
                 if seg_base is None:
                     raise BadManifestError("Representation id=%s does not "
                                            "have SegmentBase",
                                            rep.attrib['id'])
-            if media_type in ('video', 'audio'):
                 if "indexRange" not in seg_base.attrib:
                     raise BadManifestError("Representation id=%s does not "
                                            "have SegmentBase.indexRange",
@@ -199,7 +202,12 @@ def get_trackgroups_from_dash_manifest(manifest_path):
     all_as = root.findall("dash:Period/dash:AdaptationSet", ns)
     nr_video_as = 0
     for adaptation_set in all_as:
-        as_media_type = None
+        reps = adaptation_set.findall('dash:Representation', ns)
+        as_media_type = get_media_type(reps[0], adaptation_set)
+        if as_media_type == 'video':
+            nr_video_as += 1
+        elif as_media_type == 'text':
+            continue
         as_baseurl = mpd_baseurl
         asbu = root.find("dash:BaseURL", ns)
         if asbu is not None:
@@ -207,9 +215,6 @@ def get_trackgroups_from_dash_manifest(manifest_path):
         track_file_paths.append([])
         reps = adaptation_set.findall('dash:Representation', ns)
         for rep in reps:
-            if as_media_type is None:
-                as_media_type = get_media_type(rep, adaptation_set)
-                nr_video_as += 1
             path = rep.find('dash:BaseURL', ns).text
             total_path = os.path.join(as_baseurl, path)
             track_file_paths[-1].append(total_path)
@@ -252,8 +257,9 @@ def check_alignment(manifest_path, verbose):
                     raise ValueError("New track timescale %d (not %d) for %s" %
                                      this_sidx_timescale, sidx_timescale,
                                      name)
-            log.info("%3d name=%s timescale=%d sidx_timescale=%d" %
-                     (i + 1, track_path, segment_timescale, sidx_timescale))
+            log.info("Nr %d of %d: name=%s timescale=%d sidx_timescale=%d" %
+                     (i + 1, len(track_group), track_path, segment_timescale,
+                      sidx_timescale))
             if not compare_segments_and_sidx(name, track):
                 log.error("SIDX/Segment mismatch in %s" % track_path)
                 badness |= BAD_SIDX
@@ -272,6 +278,7 @@ def compare_segments_and_sidx(track_name, track):
     sidx_data = track.sidx_segment_data
     seg_timescale = seg_data['timescale']
     sidx_timescale = sidx_data['timescale']
+    time_diffs = []
     equal = True
     if len(sidx_data['segments']) != len(seg_data['segments']):
         log.error("Sidx has %d segments, while there are %d" %
@@ -279,13 +286,24 @@ def compare_segments_and_sidx(track_name, track):
         return False
     for i, (sidx_seg, seg_seg) in enumerate(zip(sidx_data['segments'],
                                                 seg_data['segments'])):
-        if (sidx_seg['duration'] * seg_timescale != seg_seg['duration'] *
-            sidx_timescale):
-            log.debug("Sidx duration mismatch for segment %d (%d, %d) != ("
-                      "%d %d)" % ((i + 1), sidx_seg['duration'],
-                                  sidx_timescale, seg_seg['duration'],
-                                  seg_timescale))
+        sidx_dur = sidx_seg['duration']
+        seg_dur = seg_seg['duration']
+        if sidx_dur * seg_timescale != seg_dur * sidx_timescale:
+            log.debug("Sidx duration mismatch for segment %d: (%d, %d) != ("
+                      "%d, %d)" % ((i + 1), sidx_dur, sidx_timescale, seg_dur,
+                                   seg_timescale))
             equal = False
+        if sidx_timescale == seg_timescale:
+            time_diffs.append(sidx_dur - seg_dur)
+        else:
+            time_diffs.append(sidx_dur * seg_timescale - seg_dur *
+                              sidx_timescale)
+        if sidx_seg['size'] != seg_seg['size']:
+            log.debug("Sidx size mismatch for segment %d: %d !=  %d" %
+                      (sidx_seg['size'], seg_seg['size']))
+            equal = False
+    if not equal:
+        log.info("sidx-seg duration diffs: %s" % Counter(time_diffs))
     return equal
 
 
@@ -303,6 +321,9 @@ def check_track_group_alignment(track_durations):
                 for dur1, dur2 in zip(track_durations[i].durations,
                                       track_durations[j].durations):
                     diffs.append(dur1 - dur2)
+                    if dur1 != dur2:
+                        log.debug("Duration diff between %s and %s: %d != %d" %
+                                  (name1, name2, dur1, dur2))
                 log.info("Diffs between %s and %s: %s" % (name1, name2,
                                                           Counter(diffs)))
                 nr_mismatches[name1] += 1
@@ -315,7 +336,7 @@ def check_track_group_alignment(track_durations):
                           (name, mismatches))
                 nr_bad_tracks += 1
     elif len(track_durations) == 2:
-        if nr_mismatches[track_durations[0]] > 0:
+        if nr_mismatches:
             nr_bad_tracks = 1
     return nr_bad_tracks
 
@@ -354,7 +375,7 @@ def check_asset(mpd_path, verbose):
                 print(e.message)
                 traceback.print_tb(sys.exc_traceback)
         else:
-            badness  |= check_alignment(mpd_path, verbose)
+            badness |= check_alignment(mpd_path, verbose)
     except Exception, e:
         log.error(e.message)
         if verbose:
@@ -368,6 +389,7 @@ def check_asset(mpd_path, verbose):
         print "Asset %s is OK" % mpd_path
     return badness
 
+
 def check_asset_tree(verbose, asset_dir, names):
     badness = 0
     for name in names:
@@ -375,7 +397,6 @@ def check_asset_tree(verbose, asset_dir, names):
         base, ext = os.path.splitext(path)
         if ext == '.mpd':
             badness |= check_asset(path, verbose)
-
 
 
 def cli():
