@@ -1,12 +1,13 @@
 """DASH OnDemand Verifier.
 
-Verify that assets defined by a DASH manifest are good on-demand assets.
+Verifies that assets defined by a DASH manifest are good on-demand assets.
 
-Check that
+Checks that
 
 * the manifest uses indexRange and baseURL to specify content.
 * sidx durations agree with the actual subsegments
 * different representations in the same adaptation set are aligned.
+* baseMediaDecodeTime starts at 0
 
 Further restrictions are (should be put in a profile):
 * Text is either TTML or WebVTT as sideloaded files
@@ -17,7 +18,9 @@ Return an exit value that is a bitmask combination of
 BAD_SIDX = 0x01
 BAD_ALIGNMENT = 0x02
 BAD_MANIFEST = 0x04
-BAD_OTHER = 0x08
+BAD_NONZERO_FIRST_TIME = 0x08
+BAD_NON_CONSISTENT_TFDT_TIMELIINE = 0x10
+BAD_OTHER = 0x80
 
 A result of 0, means nothing bad found.
 """
@@ -37,7 +40,9 @@ log = logging.getLogger('__name__')
 BAD_SIDX = 0x01
 BAD_ALIGNMENT = 0x02
 BAD_MANIFEST = 0x04
-BAD_OTHER = 0x08
+BAD_NONZERO_FIRST_TIME = 0x08
+BAD_NON_CONSISTENT_TFDT_TIMELIINE = 0x10
+BAD_OTHER = 0x80
 
 MAX_NR_VIDEO_ADAPTATION_SETS = 1
 
@@ -51,6 +56,10 @@ def badness_string(badness):
         parts.append('representation misalignment')
     if badness & BAD_MANIFEST:
         parts.append('bad manifest')
+    if badness & BAD_NONZERO_FIRST_TIME:
+        parts.append('first decode time is not 0')
+    if badness & BAD_NON_CONSISTENT_TFDT_TIMELIINE:
+        parts.append('tfdt decode timeline not consistent')
     if badness & BAD_OTHER:
         parts.append('other problem')
     return ", ". join(parts)
@@ -69,7 +78,8 @@ class BadManifestError(Exception):
 
 class CMAFTrack(object):
     "Check and possibly fix a CMAF track."
-    def __init__(self, data):
+    def __init__(self, name, data):
+        self.name = name
         self.root = mp4(data)
         self.segment_data = self._find_subsegment_data(self.root)
         self.sidx_segment_data = self._get_sidx_segment_data(self.root)
@@ -79,6 +89,11 @@ class CMAFTrack(object):
         timescale = mp4_root.find('moov.trak.mdia.mdhd').timescale
         segments = []
         segment = {}
+        nr_segments = 0
+        segment_data = {'timescale' : timescale,
+                        'segments': segments,
+                        'first_decode_time' : None,
+                        'badness': 0}
         for top_box in mp4_root.children:
             if not segment and top_box.type in ('emsg', 'styp', 'moof'):
                 segment = {'size': 0, 'offset': top_box.offset}
@@ -88,31 +103,36 @@ class CMAFTrack(object):
                     tfdt = top_box.find('traf.tfdt')
                     segment['decode_time'] = tfdt.decode_time
                     trun = top_box.find('traf.trun')
+                    if nr_segments == 0:
+                        segment_data['first_decode_time'] = tfdt.decode_time
+                        segment_data['first_pres_time'] = (tfdt.decode_time +
+                                                           trun.first_cto)
                     segment['duration'] = trun.total_duration
                     if segment['duration'] == 0:  # Must find values in trex
                         trex = mp4_root.find('moov.mvex.trex')
                         segment['duration'] = (trex.default_sample_duration *
                                                trun.sample_count)
-                    nr_segments = len(segments)
                     if nr_segments > 0:
                         last_seg = segments[-1]
-                        self._check_duration_consistency(segment, last_seg,
-                                                         nr_segments)
-
+                        badness = self._check_duration_consistency(
+                            self.name, segment, last_seg, nr_segments)
+                        segment_data['badness'] |= badness
                 elif top_box.type == 'mdat':
                     segments.append(segment)
                     segment = {}
-        segment_data = {'timescale': timescale,
-                        'segments': segments}
+                    nr_segments += 1
         return segment_data
 
-    def _check_duration_consistency(self, segment, last_seg, nr):
+    def _check_duration_consistency(self, name, segment, last_seg, nr):
         "Check that last_seg ends at the time segment starts."
         last_end = last_seg['decode_time'] + last_seg['duration']
         if segment['decode_time'] != last_end:
-            log.error("Segment end %d not equal to next segment start %d for "
-                      "seg nr %d and %d" % (last_end, segment['decode_time'],
-                                            nr, nr + 1))
+            log.error("%s: Segment end %d not equal to next segment start %d "
+                      "for seg nr %d and %d" % (name, last_end,
+                                                segment['decode_time'],
+                                                nr, nr + 1))
+            return BAD_NON_CONSISTENT_TFDT_TIMELIINE
+        return 0
 
     def _get_sidx_segment_data(self, mp4_root):
         "Return sidx segment data."
@@ -131,7 +151,8 @@ class CMAFTrack(object):
             offset += size
             pres_time += duration
         sidx_data = {'timescale': sidx.timescale,
-                     'segments': sidx_segments}
+                     'segments': sidx_segments,
+                     'first_pres_time': sidx.first_pres_time}
         return sidx_data
 
 
@@ -240,9 +261,12 @@ def check_alignment(manifest_path, verbose):
         for i, track_path in enumerate(track_group):
             name = os.path.basename(track_path)
             data = open(track_path, 'rb').read()
-            track = CMAFTrack(data)
-            this_seg_timescale = track.segment_data['timescale']
-            this_sidx_timescale = track.sidx_segment_data['timescale']
+            track = CMAFTrack(name, data)
+            segment_data = track.segment_data
+            badness |= segment_data['badness']
+            sidx_segment_data = track.sidx_segment_data
+            this_seg_timescale = segment_data['timescale']
+            this_sidx_timescale = sidx_segment_data['timescale']
             if segment_timescale is None:
                 segment_timescale = this_seg_timescale
             else:
@@ -257,14 +281,27 @@ def check_alignment(manifest_path, verbose):
                     raise ValueError("New track timescale %d (not %d) for %s" %
                                      this_sidx_timescale, sidx_timescale,
                                      name)
-            log.info("Nr %d of %d: name=%s timescale=%d sidx_timescale=%d" %
+            log.info("Representation %d of %d: %s timescale=%d "
+                     "sidx_timescale=%d" %
                      (i + 1, len(track_group), track_path, segment_timescale,
                       sidx_timescale))
+            first_decode_time =segment_data['first_decode_time']
+            first_pres_time = segment_data['first_pres_time']
+            first_sidx_time = sidx_segment_data['first_pres_time']
+            if first_sidx_time not in (first_pres_time, first_decode_time):
+                log.error("%s: SIDX first_presentation_time %d does not agree "
+                          "with segment decode %d or pres %s" % (
+                    name, first_sidx_time, first_decode_time, first_pres_time))
+                badness |= BAD_SIDX
+            if first_decode_time != 0:
+                log.error("%s: First tfdt decode_time is not zero but %d" %
+                          (name, first_decode_time))
+                badness |= BAD_NONZERO_FIRST_TIME
             if not compare_segments_and_sidx(name, track):
-                log.error("SIDX/Segment mismatch in %s" % track_path)
+                log.error("%s: SIDX/Segment mismatch" % track_path)
                 badness |= BAD_SIDX
             track_durs = [t['duration'] for t in
-                          track.segment_data['segments']]
+                          segment_data['segments']]
             track_durations.append(TrackDurations(track_path, track_durs))
     nr_bad_tracks = check_track_group_alignment(track_durations)
     if nr_bad_tracks > 0:
@@ -281,8 +318,9 @@ def compare_segments_and_sidx(track_name, track):
     time_diffs = []
     equal = True
     if len(sidx_data['segments']) != len(seg_data['segments']):
-        log.error("Sidx has %d segments, while there are %d" %
-                  (len(sidx_data['segments']), len(seg_data['segments'])))
+        log.error("%s: Sidx has %d segments, while there are %d" %
+                  (track_name, len(sidx_data['segments']),
+                   len(seg_data['segments'])))
         return False
     for i, (sidx_seg, seg_seg) in enumerate(zip(sidx_data['segments'],
                                                 seg_data['segments'])):
@@ -355,7 +393,7 @@ def setup_logging(log_level, log_to_stdout):
         if os.path.exists(LOGFILE):
             os.remove(LOGFILE)
         log_handler = logging.FileHandler(LOGFILE)
-    formatter = logging.Formatter('%(name)s - %(levelname)s - %(message)s')
+    formatter = logging.Formatter('%(levelname)s - %(message)s')
     log_handler.setFormatter(formatter)
     logger.addHandler(log_handler)
 
@@ -398,11 +436,29 @@ def check_asset_tree(verbose, asset_dir, names):
         if ext == '.mpd':
             badness |= check_asset(path, verbose)
 
+usage = """usage: %(prog)s [options]
+
+Verifies that assets defined by a DASH manifest are good on-demand assets.
+
+Checks that
+
+* the manifest uses indexRange and baseURL to specify content.
+* sidx durations agree with the actual subsegments
+* different representations in the same adaptation set are aligned.
+* baseMediaDecodeTime starts at 0
+
+Outputs a one-line summary of problems for each asset (mpd-file) checked.
+
+For individual files, an exit value indicating the errors found is returned.
+"""
 
 def cli():
-    parser = ArgumentParser(usage="usage: %(prog)s [options]")
 
-    parser.add_argument("manifest_files", nargs="*")
+    parser = ArgumentParser(usage=usage)
+
+    parser.add_argument("manifest_files", nargs="*", help="mpd files or "
+                                                          "directory trees to "
+                                                          "traverse")
 
     parser.add_argument("--stdout",
                         action="store_true",

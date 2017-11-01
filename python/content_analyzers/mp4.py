@@ -1337,6 +1337,7 @@ class trun_box(full_box):
         self.has_sample_size = self.flags & 0x0200
         self.has_sample_flags = self.flags & 0x0400
         self.has_sample_composition_time_offset = self.flags & 0x0800
+        self.first_cto = 0  # Can be used to calculate first presentation time
 
         # self.sample_count = struct.unpack('>I', self.fmap[self.offset+12:self.offset+16])[0]
         self.data_offset = 0
@@ -1366,6 +1367,13 @@ class trun_box(full_box):
             self.total_duration = self.parent.find('tfhd').default_sample_duration * self.sample_count
         # Note. One may need to go all the way to trex to find the default
         # values
+
+        if self.has_sample_composition_time_offset:
+            offset = (self.offset + self.sample_array_offset +
+                      (self.has_sample_duration and 4) +
+                      (self.has_sample_size and 4) +
+                      (self.has_sample_flags and 4))
+            self.first_cto = struct.unpack_from('>I', self.fmap, offset)[0]
 
         self.decoration += ' tdur:%d' % self.total_duration
 
