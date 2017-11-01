@@ -7,7 +7,7 @@ Useful to get audio segments with a specified average duration."""
 # included below. This software may be subject to other third party and contributor
 # rights, including patent rights, and no such rights are granted under this license.
 #
-# Copyright (c) 2016, Dash Industry Forum.
+# Copyright (c) 2017, Dash Industry Forum.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without modification,
@@ -38,7 +38,7 @@ from collections import namedtuple
 
 from structops import str_to_uint16, uint16_to_str, uint32_to_str
 from structops import str_to_uint32, str_to_uint64, uint64_to_str
-from cmaf_track_data_extractor import SampleMetadataExtraction
+from cmaf_track_data_extractor import CMAFTrackDataExtractor
 
 BACKUP_FILE_SUFFIX = "_bup"
 
@@ -63,8 +63,8 @@ class Resegmenter(object):
         "Resegment the track with new duration."
 
 
-        self.input_parser = SampleMetadataExtraction(self.input_file,
-                                                     self.verbose)
+        self.input_parser = CMAFTrackDataExtractor(self.input_file,
+                                                   self.verbose)
         ip = self.input_parser
         ip.filter_top_boxes()
         timescale = ip.track_timescale
