@@ -67,6 +67,9 @@ class Resegmenter(object):
                                                    self.verbose)
         ip = self.input_parser
         ip.filter_top_boxes()
+        if len(ip.input_segments) == 0:
+            raise ValueError("No fragments found in input file. Progressive "
+                             "file?")
         timescale = ip.track_timescale
         if self.verbose:
             for i, segment in enumerate(ip.input_segments):

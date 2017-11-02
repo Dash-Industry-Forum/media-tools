@@ -436,7 +436,7 @@ def check_asset_tree(verbose, asset_dir, names):
         if ext == '.mpd':
             badness |= check_asset(path, verbose)
 
-usage = """usage: %(prog)s [options]
+usage = """usage: %(prog)s [options] file/dir ...
 
 Verifies that assets defined by a DASH manifest are good on-demand assets.
 
@@ -452,11 +452,11 @@ Outputs a one-line summary of problems for each asset (mpd-file) checked.
 For individual files, an exit value indicating the errors found is returned.
 """
 
-def cli():
+def main():
 
     parser = ArgumentParser(usage=usage)
 
-    parser.add_argument("manifest_files", nargs="*", help="mpd files or "
+    parser.add_argument("manifest_files", nargs="+", help="mpd files or "
                                                           "directory trees to "
                                                           "traverse")
 
@@ -489,4 +489,4 @@ def cli():
 
 
 if __name__ == "__main__":
-    cli()
+    main()
