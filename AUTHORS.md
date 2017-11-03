@@ -3,6 +3,7 @@
 * @GitHub UserName (Required) [Name and/or Organization] (Optional)
 
 #Authors
+* @TobbeEdgeware [Torbjörn Einarsson, Edgeware]
 * @TobbeMobiTV [Torbjörn Einarsson, MobiTV]
 * @mobiola [Ola Hållmarker, MobiTV]
 * @KenthMobiTV [Kenth Andersson, MobiTV]

@@ -1,0 +1,15 @@
+[
+    {
+        "contentType" : "video",
+        "resolution" : "1920x1080", 
+        "frameRate" : 25,
+        "gopLength" : 50,
+        "segmentDurationMs" : 6000,
+        "variants" : [{"name" : "V8000", "vrate" :8000, "resolution": "1920x1080"}]
+    },
+    {
+        "contentType" : "audio",
+        "language": "eng",
+        "variants" : [{"name" : "A9", "arate" : 96}]
+    }
+]
