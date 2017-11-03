@@ -8,6 +8,7 @@ Checks that
 * sidx durations agree with the actual subsegments
 * different representations in the same adaptation set are aligned.
 * baseMediaDecodeTime starts at 0
+* segment durations are similar in different adaptation sets (warning if not)
 
 Further restrictions are (should be put in a profile):
 * Text is either TTML or WebVTT as sideloaded files
@@ -31,7 +32,7 @@ import logging
 import traceback
 import xml.etree.ElementTree as ET
 from argparse import ArgumentParser
-from collections import defaultdict, namedtuple, Counter
+from collections import defaultdict, namedtuple, Counter, OrderedDict
 
 from mp4 import mp4
 
@@ -45,6 +46,10 @@ BAD_NON_CONSISTENT_TFDT_TIMELIINE = 0x10
 BAD_OTHER = 0x80
 
 MAX_NR_VIDEO_ADAPTATION_SETS = 1
+
+TOTAL_DUR_DIFF_THRESHOLD = 0.3
+SEGMENT_DUR_DIFF_THRESHOLD = 0.05
+MAX_AVERAGE_DURATION_DIFF = 0.05
 
 
 def badness_string(badness):
@@ -70,6 +75,8 @@ LOGFILE = 'dashondemand_verifier.log'
 
 
 TrackDurations = namedtuple('TrackDurations', 'name durations')
+
+ASDurations = namedtuple('ASDurations', 'name durations total_dur nr_segs')
 
 
 class BadManifestError(Exception):
@@ -248,9 +255,13 @@ def get_trackgroups_from_dash_manifest(manifest_path):
 def check_alignment(manifest_path, verbose):
     """Check alignment and return badness as mask.
 
-    0 is OK. 1 is sidx issue. 2 is inter-track-alignment issue."""
+    Compare sidx vs subsegment timestamp/sizes inside one track.
+    Compare between representations inside on adaptation set.
+    Compare between adaptation sets (for video and audio).
+    """
     badness = 0
     track_groups = get_trackgroups_from_dash_manifest(manifest_path)
+    tg_segment_data = OrderedDict()
     for nr, track_group in enumerate(track_groups):
         log.info("Checking adaptation set group nr %d (%d files)" %
                  ((nr + 1), len(track_group)))
@@ -263,6 +274,8 @@ def check_alignment(manifest_path, verbose):
             data = open(track_path, 'rb').read()
             track = CMAFTrack(name, data)
             segment_data = track.segment_data
+            if i == 0:  # Take one segment timeline per group
+                tg_segment_data[name] = segment_data
             badness |= segment_data['badness']
             sidx_segment_data = track.sidx_segment_data
             this_seg_timescale = segment_data['timescale']
@@ -306,7 +319,56 @@ def check_alignment(manifest_path, verbose):
     nr_bad_tracks = check_track_group_alignment(track_durations)
     if nr_bad_tracks > 0:
         badness |= BAD_ALIGNMENT
+    nr_inter_alignment_issues = _check_inter_as_alignment(tg_segment_data)
+    if nr_inter_alignment_issues > 0:
+        print("There %d warnings on alignment issues between adaptation sets. "
+              "See log." % nr_inter_alignment_issues)
     return badness
+
+
+def _check_inter_as_alignment(tg_segment_data):
+    "Check alignment between adaptation sets. This is not critical bud bad"
+
+    def average(list):
+        return sum(list) / len(list)
+
+    as_timing = []
+    nr_inter_alignment_issues = 0
+    for name, seg_data in tg_segment_data.iteritems():
+        inv_timescale = 1.0 / seg_data['timescale']
+        durs = [s['duration'] * inv_timescale for s in seg_data['segments']]
+        total_dur = sum(durs)
+        as_timing.append(ASDurations(name, durs, total_dur, len(durs)))
+    for i in range(len(as_timing) - 1):
+        as1 = as_timing[i]
+        for j in range(i + 1, len(as_timing)):
+            as2 = as_timing[j]
+            if as1.nr_segs != as2.nr_segs:
+                log.warning('Nr segments differs for %s vs %s: %d vs %d' %
+                            (as1.name, as2.name, as1.nr_segs, as2.nr_segs))
+                nr_inter_alignment_issues += 1
+            common_length_minus1 = min(as1.nr_segs, as2.nr_segs) - 1
+            avg1 = average(as1.durations[:common_length_minus1])
+            avg2 = average(as2.durations[:common_length_minus1])
+            if abs(avg1 - avg2) > MAX_AVERAGE_DURATION_DIFF:
+                log.warning('Average seg dur for %s differs from %s by %.2fs' %
+                            (as1.name, as2.name, abs(avg1 - avg2)))
+                nr_inter_alignment_issues += 1
+            if abs(as1.total_dur - as2.total_dur) > TOTAL_DUR_DIFF_THRESHOLD:
+                log.warning('Total dur differs for %s vs %s: %.1fs vs %.1fs' %
+                            (as1.name, as2.name, as1.total_dur, as2.total_dur))
+                nr_inter_alignment_issues += 1
+            nr_seg_diffs = 0
+            for nr, (d1, d2) in enumerate(zip(as1.durations, as2.durations)):
+                if abs(d1 - d2) > SEGMENT_DUR_DIFF_THRESHOLD:
+                    nr_seg_diffs += 1
+                    log.debug('Seg dur diff %d %s vs %s: %.2fs vs %.2fs' %
+                              (nr, as1.name, as2.name, d1, d2))
+            if nr_seg_diffs > 0:
+                log.warning("%s vs %s, %d segment durarions differ"
+                            % (as1.name, as2.name, nr_seg_diffs))
+                nr_inter_alignment_issues += 1
+    return nr_inter_alignment_issues
 
 
 def compare_segments_and_sidx(track_name, track):
@@ -399,7 +461,7 @@ def setup_logging(log_level, log_to_stdout):
 
 
 def check_asset(mpd_path, verbose):
-    "Check a file."
+    "Check a an asset defined by an MPD path."
     print "Checking %s" % mpd_path
     log.info("Checking %s" % mpd_path)
     badness = 0
