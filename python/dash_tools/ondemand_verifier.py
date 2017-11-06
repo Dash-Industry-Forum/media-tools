@@ -82,6 +82,11 @@ ASDurations = namedtuple('ASDurations', 'name durations total_dur nr_segs')
 class BadManifestError(Exception):
     pass
 
+class MultipleTrunError(Exception):
+    "There is more than one trun in a segment. Against CMAF."
+    pass
+
+
 
 class CMAFTrack(object):
     "Check and possibly fix a CMAF track."
@@ -109,7 +114,12 @@ class CMAFTrack(object):
                 if top_box.type == 'moof':
                     tfdt = top_box.find('traf.tfdt')
                     segment['decode_time'] = tfdt.decode_time
-                    trun = top_box.find('traf.trun')
+                    truns = top_box.find_all('traf.trun')
+                    if len(truns) != 1:
+                        raise MultipleTrunError("Multiple trun boxes (%d) in "
+                                                "one segment is against "
+                                                "CMAF" % len(truns))
+                    trun = truns[0]
                     if nr_segments == 0:
                         segment_data['first_decode_time'] = tfdt.decode_time
                         segment_data['first_pres_time'] = (tfdt.decode_time +
@@ -508,6 +518,7 @@ Checks that
 * sidx durations agree with the actual subsegments
 * different representations in the same adaptation set are aligned.
 * baseMediaDecodeTime starts at 0
+* only one trun box per subsegment
 
 Outputs a one-line summary of problems for each asset (mpd-file) checked.
 
