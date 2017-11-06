@@ -1,4 +1,4 @@
-"""Resegment a CMAF track to new exact average duration.
+"""Resegment a DASH OnDemand/CMAF track to new exact average duration.
 
 Useful to get audio segments with a specified average duration."""
 
@@ -38,7 +38,7 @@ from collections import namedtuple
 
 from structops import str_to_uint16, uint16_to_str, uint32_to_str
 from structops import str_to_uint32, str_to_uint64, uint64_to_str
-from cmaf_track_data_extractor import CMAFTrackDataExtractor
+from track_data_extractor import TrackDataExtractor
 
 BACKUP_FILE_SUFFIX = "_bup"
 
@@ -46,8 +46,8 @@ SegmentData = namedtuple("SegmentData", "nr start dur size data")
 SegmentInfo = namedtuple("SegmentInfo", "start_nr end_nr start_time dur")
 
 
-class Resegmenter(object):
-    "Resegment a CMAF track into a new output track."
+class TrackResegmenter(object):
+    "Resegment an OnDemand/CMAF track into a new output track."
 
     def __init__(self, input_file, duration_ms, output_file,
                  skip_sidx=False, verbose=False):
@@ -63,8 +63,8 @@ class Resegmenter(object):
         "Resegment the track with new duration."
 
 
-        self.input_parser = CMAFTrackDataExtractor(self.input_file,
-                                                   self.verbose)
+        self.input_parser = TrackDataExtractor(self.input_file,
+                                               self.verbose)
         ip = self.input_parser
         ip.filter_top_boxes()
         if len(ip.input_segments) == 0:
@@ -312,9 +312,9 @@ def main():
 
     args = parser.parse_args()
 
-    resegmenter = Resegmenter(args.input_file, args.duration,
-                              args.output_file, args.skip_sidx,
-                              args.verbose)
+    resegmenter = TrackResegmenter(args.input_file, args.duration,
+                                   args.output_file, args.skip_sidx,
+                                   args.verbose)
     resegmenter.resegment()
 
 if __name__ == "__main__":

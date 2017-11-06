@@ -2,7 +2,8 @@
 """Batch encoder of mp4 files into many different variants using ffmpeg.
 
 Supports H.264/AVC and H.265/HEVC + AAC.
-Config files shall be in JSON format, see examples provided.
+Config files shall be in JSON format, see examples provided at
+https://github.com/Dash-Industry-Forum/media-tools/tree/restructure-for-distribution-packaging/python/example_configs
 """
 
 # The copyright in this software is being made available under the BSD License,

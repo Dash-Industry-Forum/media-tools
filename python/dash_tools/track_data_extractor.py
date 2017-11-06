@@ -1,4 +1,4 @@
-"""Extract data from CMAF track"""
+"""Extract data from DASH OnDemand/CMAF track"""
 
 
 # The copyright in this software is being made available under the BSD License,
@@ -39,11 +39,11 @@ from mp4filter import MP4Filter
 SampleData = namedtuple("SampleData", "start dur size offset flags cto")
 
 
-class CMAFTrackDataExtractor(MP4Filter):
-    "Extract data from CMAF Track. "
+class TrackDataExtractor(MP4Filter):
+    "Extract data from DASH Ondemand/CMAF Track. "
 
     def __init__(self, file_name, verbose=False):
-        super(CMAFTrackDataExtractor, self).__init__(file_name)
+        super(TrackDataExtractor, self).__init__(file_name)
         self.verbose = verbose
         self.relevant_boxes = ["moov", "moof", "sidx"]
         self.track_timescale = None

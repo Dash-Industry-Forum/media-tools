@@ -512,6 +512,7 @@ Checks that
 Outputs a one-line summary of problems for each asset (mpd-file) checked.
 
 For individual files, an exit value indicating the errors found is returned.
+
 """
 
 def main():

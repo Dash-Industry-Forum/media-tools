@@ -37,8 +37,7 @@ from xml import sax
 from xml.sax import handler, saxutils, xmlreader
 from argparse import ArgumentParser
 
-sys.path.append("../../dash/segment_modifiers")
-from cmaf_track_resegmenter import Resegmenter
+from track_resegmenter import TrackResegmenter
 
 BACKUP_FILE_SUFFIX = "_bup"
 MP4BOX = "MP4Box"  # path to MP4Box of late-enough version.
@@ -148,7 +147,7 @@ class DashOnDemandCreator(object):
         for track in tracks['audio']:
             file_name = self.file_path('{0}_dashinit.mp4'.format(track))
             # out_name = '{0}_dashout.mp4'.format(track)
-            resegmenter = Resegmenter(file_name, dur_ms, file_name)
+            resegmenter = TrackResegmenter(file_name, dur_ms, file_name)
             resegmenter.resegment()
             sidx_ranges[track] = resegmenter.sidx_range
         return sidx_ranges
