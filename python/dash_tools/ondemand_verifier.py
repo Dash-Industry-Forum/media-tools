@@ -197,6 +197,8 @@ def get_media_type(rep, adaptation_set):
 
 def check_dash_manifest(manifest_path, verbose):
     """Check that DASH manifest is OnDemand with side-loaded subtitles."""
+    if not os.path.exists(manifest_path):
+        raise IOError("IOError: Manifest %s does not exist" % manifest_path)
     tree = ET.parse(manifest_path)
     root = tree.getroot()
     if root.attrib['type'] != 'static':
@@ -281,7 +283,10 @@ def check_alignment(manifest_path, verbose):
         sidx_timescale = None
         for i, track_path in enumerate(track_group):
             name = os.path.basename(track_path)
-            data = open(track_path, 'rb').read()
+            try:
+                data = open(track_path, 'rb').read()
+            except IOError as e:
+                raise e
             track = CMAFTrack(name, data)
             segment_data = track.segment_data
             if i == 0:  # Take one segment timeline per group
@@ -480,16 +485,16 @@ def check_asset(mpd_path, verbose):
             check_dash_manifest(mpd_path, verbose)
         except BadManifestError, e:
             badness = BAD_MANIFEST
-            log.error(e.message)
+            log.error(e)
             if verbose:
-                print(e.message)
+                print(e)
                 traceback.print_tb(sys.exc_traceback)
         else:
             badness |= check_alignment(mpd_path, verbose)
     except Exception, e:
-        log.error(e.message)
+        log.error(e)
         if verbose:
-            print(e.message)
+            print(e)
             traceback.print_tb(sys.exc_traceback)
         badness |= BAD_OTHER
     if badness != 0:
