@@ -768,9 +768,8 @@ function box_avcC(data, offset, len) {
     }
 
     boxContent.PPS = new Array();
-    var tmp2 = data.getUint8(x); x += 1;
-    var numPps = tmp2 & 0x1f;
-    for (var i = 0; i < numSps; ++i)
+    var numPps = data.getUint8(x); x += 1;
+    for (var i = 0; i < numPps; ++i)
     {
         var ppsSize = data.getUint16(x); x += 2;
         var pps = data.getUTF8String(x, ppsSize); x += ppsSize;
