@@ -35,7 +35,8 @@ import os
 import mp4filter
 
 def main():
-    "Parse command line and call change_brands."
+    "Change base_media_decode_time in tfdt on multiple segment files."
+
     argv = sys.argv
     if len(argv) == 2:
         infile = argv[1]

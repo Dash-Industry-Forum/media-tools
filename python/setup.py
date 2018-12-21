@@ -35,7 +35,7 @@ setup(
 
     # Author details
     author='Torbjorn Einarsson',
-    author_email='torbjorn.einasson@edgeware.tv',
+    author_email='torbjorn.einarsson@edgeware.tv',
 
     # Choose your license
     license='BSD',
