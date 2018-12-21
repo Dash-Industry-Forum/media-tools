@@ -65,7 +65,7 @@ def make_x264_options(video_values):
     values['vbv-maxrate'] = int(values['vrate']*1.15)
     values['vbv-bufsize'] = int(values['vrate']*values['segmentDurationMs']
                                 * 0.001)
-    options = ['-c:v libx264 -profile:v high -flags +cgop -r %(frameRate)d']
+    options = ['-c:v libx264 -profile:v high -flags +cgop -r %(frameRate).2f']
     # Note that bitrates are in kbps (with k = 1000)
     options.append(' -x264opts bitrate=%(vrate)d:vbv-maxrate=%(vbv-maxrate)d:vbv-bufsize=%(vbv-bufsize)d')
     options.append(':scenecut=-1:keyint=%(gopLength)d:min-keyint=%(gopLength)d')
@@ -253,7 +253,7 @@ def validate_framerate_gop_segment_duration(json_data):
         if remainder != 0:
             raise ValueError("For 29.97Hz video, only GoP durations nx30 are allowed")
         if seg_dur_ms != mul30 * 1001:
-            raise ValueError("Segment duration is not a multiple of 1001")
+            raise ValueError("Segment duration %d is not a multiple of 1001" % seg_dur_ms)
         return
     if is_close(frame_rate, 59.94):
         mul60, remainder = divmod(gop_length, 60)
@@ -261,7 +261,7 @@ def validate_framerate_gop_segment_duration(json_data):
             raise ValueError(
                 "For 59.94Hz video, only GoP durations nx60 are allowed")
         if seg_dur_ms != mul60 * 1001:
-            raise ValueError("Segment duration is not a multiple of 1001")
+            raise ValueError("Segment duration %d is not a multiple of 1001" % seg_dur_ms)
         return
     if frame_rate not in (24, 25, 30, 48, 50, 60):
         raise ValueError("Framerate %s not supported" % frame_rate)
