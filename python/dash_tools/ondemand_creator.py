@@ -131,7 +131,8 @@ class DashOnDemandCreator(object):
         print result
 
     def create_mp4box_command(self, tracks, dur_ms):
-        parts = [MP4BOX, '-dash', str(dur_ms), '-profile', 'onDemand',
+        parts = [MP4BOX, '-dash', str(dur_ms), '-frag',
+                 str(dur_ms), '-profile', 'onDemand',
                  '-out', self.file_path(self.mpd_name)]
         for track in tracks['video']:
             parts.append('{0}.mp4:id={1}'.format(self.file_path(track), track))
