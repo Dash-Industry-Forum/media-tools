@@ -42,6 +42,7 @@ from track_resegmenter import TrackResegmenter
 BACKUP_FILE_SUFFIX = "_bup"
 MP4BOX = "MP4Box"  # path to MP4Box of late-enough version.
 
+
 def check_mp4box_version():
     cmd_line = [MP4BOX, "-version"]
     result = subprocess.check_output(cmd_line, stderr=subprocess.STDOUT)
@@ -153,10 +154,8 @@ class DashOnDemandCreator(object):
             sidx_ranges[track] = resegmenter.sidx_range
         return sidx_ranges
 
-    def fix_sidx_ranges(self, input_file, output, sidx_for_representations):
-        """ filter_mpd(input_file=some_input_filename, output=file_handler)
-            Parses mpd and replaces ranges for sidx boxes.
-        """
+    def _fix_sidx_ranges(self, input_file, output, sidx_for_representations):
+        "Filter input and replace ranges for sidx boxes."
 
         output_gen = saxutils.XMLGenerator(output, encoding='utf-8')
         parser = sax.make_parser()
@@ -167,9 +166,10 @@ class DashOnDemandCreator(object):
         sidx_filter.parse(input_file)
 
     def fix_sidx_ranges_in_mpd(self, mpd_file, sidx_ranges):
+        "Fix sidx ranges MPD file."
         output = StringIO()
         with open(mpd_file, 'rb') as ifh:
-            self.fix_sidx_ranges(ifh, output, sidx_ranges)
+            self._fix_sidx_ranges(ifh, output, sidx_ranges)
         move_file_to_backup(mpd_file)
         with open(mpd_file, 'wb') as ofh:
             ofh.write(output.getvalue())
