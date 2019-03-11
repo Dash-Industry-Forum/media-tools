@@ -189,6 +189,10 @@ def get_media_type(rep, adaptation_set):
         media_type = "text"
     elif mime_type == 'application/ttml+xml':  # Side-loaded TTML file
         media_type = "text"
+    elif mime_type == 'text/wvtt':  # Side-loaded WebVTT file
+        media_type = "text"
+    elif mime_type == 'text/srt':  # Side-loaded SRT file
+        media_type = "text"
     if mime_type == 'application/mp4':
         raise BadManifestError("Mime type %s not supported. Use side-loaded "
                                "text files for subtitles." % mime_type)
@@ -380,7 +384,7 @@ def _check_inter_as_alignment(tg_segment_data):
                     log.debug('Seg dur diff %d %s vs %s: %.2fs vs %.2fs' %
                               (nr, as1.name, as2.name, d1, d2))
             if nr_seg_diffs > 0:
-                log.warning("%s vs %s, %d segment durarions differ"
+                log.warning("%s vs %s, %d segment durations differ"
                             % (as1.name, as2.name, nr_seg_diffs))
                 nr_inter_alignment_issues += 1
     return nr_inter_alignment_issues
