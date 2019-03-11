@@ -39,8 +39,7 @@ from collections import namedtuple
 from structops import str_to_uint16, uint16_to_str, uint32_to_str, sint32_to_str
 from structops import str_to_uint32, str_to_uint64, uint64_to_str
 from track_data_extractor import TrackDataExtractor
-
-BACKUP_FILE_SUFFIX = "_bup"
+from backup_handler import make_backup, BackupError
 
 SegmentData = namedtuple("SegmentData", "nr start dur size data")
 SegmentInfo = namedtuple("SegmentInfo", "start_nr end_nr start_time dur")
@@ -89,7 +88,12 @@ class TrackResegmenter(object):
             segment_sizes.append(len(output_segment))
         if self.output_file:
             if self.output_file == self.input_file:
-                move_file_to_backup(self.input_file)
+                try:
+                    make_backup(self.input_file)
+                except BackupError:
+                    print("Backup file for %s already exists" %
+                          self.input_file)
+                    return
             with open(self.output_file, "wb") as ofh:
                 input_header_end = self.input_parser.find_header_end()
                 ofh.write(ip.data[:input_header_end])
@@ -269,11 +273,6 @@ class TrackResegmenter(object):
             if self.sample_flags & 0x800:
                 output += sint32_to_str(sample.cto)
         return output
-
-
-def move_file_to_backup(file_path):
-    backup_file = file_path + BACKUP_FILE_SUFFIX
-    os.rename(file_path, backup_file)
 
 
 def main():

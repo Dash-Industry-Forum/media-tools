@@ -35,6 +35,7 @@ import shutil
 from argparse import ArgumentParser
 
 from mp4filter import ShiftCompositionTimeOffset
+from backup_handler import make_backup, BackupError
 
 
 def process_files(files):
@@ -50,7 +51,11 @@ def process_files(files):
         if output != input:
             assert len(output) == len(input)
             print("Change in file %s. Make backup %s" % (f, f_backup))
-            os.rename(f, f_backup)
+            try:
+                make_backup(f)
+            except BackupError:
+                print("Cannot make backup for %s. Skipping it" % f)
+                return
             with open(f, 'wb') as ofh:
                 ofh.write(output)
 

@@ -32,7 +32,9 @@
 
 import os
 import sys
-BACKUP_ENDING = "_bup"
+
+from backup_handler import BACKUP_ENDING
+
 
 def main():
     "Command-line function."
@@ -48,11 +50,12 @@ def main():
     for file_name in args:
         if file_name.endswith(BACKUP_ENDING):
             old_name = file_name[:-len(BACKUP_ENDING)]
-            print "moving %s to %s" % (file_name, old_name)
+            print("moving %s to %s" % (file_name, old_name))
             if os.path.exists(old_name):
                 os.unlink(old_name)
             os.rename(file_name, old_name)
             continue
+
 
 if __name__ == "__main__":
     main()

@@ -38,8 +38,8 @@ from xml.sax import handler, saxutils, xmlreader
 from argparse import ArgumentParser
 
 from track_resegmenter import TrackResegmenter
+from backup_handler import make_backup, BackupError
 
-BACKUP_FILE_SUFFIX = "_bup"
 MP4BOX = "MP4Box"  # path to MP4Box of late-enough version.
 
 
@@ -170,14 +170,14 @@ class DashOnDemandCreator(object):
         output = StringIO()
         with open(mpd_file, 'rb') as ifh:
             self._fix_sidx_ranges(ifh, output, sidx_ranges)
-        move_file_to_backup(mpd_file)
+        try:
+            make_backup(mpd_file)
+        except BackupError:
+            print("Backupfile already exists. Will not overwrite %s" %
+                  mpd_file)
+            return
         with open(mpd_file, 'wb') as ofh:
             ofh.write(output.getvalue())
-
-
-def move_file_to_backup(file_path):
-    backup_file = file_path + BACKUP_FILE_SUFFIX
-    os.rename(file_path, backup_file)
 
 
 def main():
