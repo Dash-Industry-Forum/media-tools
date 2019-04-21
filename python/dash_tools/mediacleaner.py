@@ -34,6 +34,7 @@ import sys
 import os
 from structops import uint32_to_str, str_to_uint32
 from mp4filter import MP4Filter
+from backup_handler import make_backup, BackupError
 
 
 class MediaCleanFilter(MP4Filter):
@@ -92,6 +93,7 @@ class MediaCleanFilter(MP4Filter):
         output += data[16:]
         return output
 
+
 def main():
     "Command-line function."
     from optparse import OptionParser
@@ -105,14 +107,14 @@ def main():
         parser.error("Wrong number of arguments")
         sys.exit(1)
     for file_name in args:
-        bup_name = file_name + "_bup"
-        if os.path.exists(bup_name):
-            print "Backup-file %s already exists. Skipping file %s" % (bup_name, file_name)
+        try:
+            make_backup(file_name)
+        except BackupError:
+            print "Backup-file already exists. Skipping file %s" % file_name)
             continue
         init_cleaner = MediaCleanFilter(file_name, new_track_id=options.track_id)
         print "Processing %s" % file_name
         output = init_cleaner.filter_top_boxes()
-        os.rename(file_name, bup_name)
         with open(file_name, "wb") as ofh:
             ofh.write(output)
 

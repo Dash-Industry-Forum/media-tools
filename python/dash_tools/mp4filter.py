@@ -32,7 +32,9 @@ The filter is streamlined for DASH or other content with one track per file.
 #  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 #  POSSIBILITY OF SUCH DAMAGE.
 
-from structops import str_to_uint32, uint32_to_str, str_to_uint64, uint64_to_str
+from structops import str_to_uint32, str_to_sint32, uint32_to_str, sint32_to_str
+from structops import str_to_uint64, uint64_to_str
+
 
 def get_timescale(file_name=None, data=None):
     "Get timescale from track box."
@@ -209,13 +211,91 @@ class SidxFilter(MP4Filter):
         return output
 
 
-class TfdtFilter(MP4Filter):
-    """Process a file. Change the offset of tfdt if set, and write to outFileName."""
+class ShiftCompositionTimeOffset(MP4Filter):
+    "Shift composition_time_offest in trun boxes to start at 0."
 
-    def __init__(self, file_name, offset=None):
+    def __init__(self, file_name):
+        MP4Filter.__init__(self, file_name)
+        self.relevant_boxes = ["moof"]
+
+    def filterbox(self, box_type, data, file_pos, path=""):
+        "Filter box or tree of boxes recursively."
+        if path == "":
+            path = box_type
+        else:
+            path = "%s.%s" % (path, box_type)
+        output = ""
+        if path in ("moof", "moof.traf"):
+            output += data[:8]
+            pos = 8
+            while pos < len(data):
+                size, box_type = self.check_box(data[pos:pos + 8])
+                output += self.filterbox(box_type, data[pos:pos+size], file_pos + len(output), path)
+                pos += size
+        elif path == "moof.traf.trun": # Down at trun level
+            output = self.process_trun(data, output)
+        else:
+            output = data
+        return output
+
+    def process_trun(self, data, output):
+        """Adjust composition_time_offset to start at 0 if present."""
+        version_and_flags = str_to_uint32(data[8:12])
+        version = version_and_flags >> 24
+        flags = version_and_flags & 0x00ffffff
+
+        cto_present = flags & 0x000800   # composition_time_offset_present
+
+        if not cto_present:
+            return data   # Nothing to do
+
+        output = data[:8] + '\x01' + data[9:12]  # Full header version 1
+
+        sample_count = str_to_uint32(data[12:16])
+        offset = 16
+
+        if flags & 0x000001:  # data-offset-present
+            offset += 4
+
+        if flags & 0x000004:  # first-sample-flags-present
+            offset += 4
+
+        output += data[12:offset]
+        cto_shift = None
+
+        optional_bytes_before_cto = 0
+        if flags & 0x000100:  # sample-duration-present
+            optional_bytes_before_cto += 4
+        if flags & 0x000200:  # sample-size-present
+            optional_bytes_before_cto += 4
+        if flags & 0x000400:  # sample-flags-present
+            optional_bytes_before_cto += 4
+
+        for i in range(sample_count):
+            output += data[offset:offset + optional_bytes_before_cto]
+            offset += optional_bytes_before_cto
+
+            cto = str_to_sint32(data[offset:offset + 4])
+            if i == 0:
+                cto_shift = -cto
+            cto += cto_shift
+            output += sint32_to_str(cto)
+            offset += 4
+
+        return output
+
+
+class TfdtFilter(MP4Filter):
+    """Process a file. Change the offset of tfdt if set, and write to outFileName.
+
+    In addition, set sequence number if provided and drop sidx box.
+    """
+
+    def __init__(self, file_name, offset=None, seq_nr=None):
         MP4Filter.__init__(self, file_name)
         self.offset = offset
-        self.relevant_boxes = ["moof"]
+        self.seq_nr = seq_nr
+        self.relevant_boxes = ["moof", "sidx"]
         self.tfdt = None
 
     def filterbox(self, box_type, data, file_pos, path=""):
@@ -234,6 +314,10 @@ class TfdtFilter(MP4Filter):
                 pos += size
         elif path == "moof.traf.tfdt": # Down at tfdt level
             output = self.process_tfdt(data, output)
+        elif path == "moof.mfhd": # Down at mfhd
+            output = self.process_mfhd(data, output)
+        elif path == "sidx":
+            pass # Just drop sidx
         else:
             output = data
         return output
@@ -259,6 +343,13 @@ class TfdtFilter(MP4Filter):
         self.tfdt = tfdt
         return output
 
+    def process_mfhd(self, data, output):
+        "Set the sequence number in mfhd."
+        if self.seq_nr is not None:
+            output += data[:12] + uint32_to_str(self.seq_nr)
+        else:
+            output += data
+        return output
 
     def get_tfdt_value(self):
         "Return tfdt value."

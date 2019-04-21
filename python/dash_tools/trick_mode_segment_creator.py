@@ -7,6 +7,7 @@ from argparse import ArgumentParser
 from mp4filter import MP4Filter
 from structops import str_to_uint32, uint32_to_str, str_to_uint64, uint64_to_str
 
+
 class TrickFilter(MP4Filter):
     """Process a segment, and write new with only first sample."""
 

@@ -16,6 +16,7 @@ with open(path.join(here, 'README.rst'), encoding='utf-8') as f:
 console_scripts = [
     'dash-ondemand-verifier=dash_tools.ondemand_verifier:main',
     'dash-ondemand-creator=dash_tools.ondemand_creator:main',
+    'dash-ondemand-add-subtitles=dash_tools.ondemand_add_subs:main',
     'dash-track-resegmenter=dash_tools.track_resegmenter:main',
     'dash-batch-encoder=dash_tools.batch_encoder:main',
     'dash-livedownloader=dash_tools.livedownloader:main'
@@ -35,7 +36,7 @@ setup(
 
     # Author details
     author='Torbjorn Einarsson',
-    author_email='torbjorn.einasson@edgeware.tv',
+    author_email='torbjorn.einarsson@edgeware.tv',
 
     # Choose your license
     license='BSD',

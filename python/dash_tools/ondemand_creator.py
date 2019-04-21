@@ -38,9 +38,10 @@ from xml.sax import handler, saxutils, xmlreader
 from argparse import ArgumentParser
 
 from track_resegmenter import TrackResegmenter
+from backup_handler import make_backup, BackupError
 
-BACKUP_FILE_SUFFIX = "_bup"
 MP4BOX = "MP4Box"  # path to MP4Box of late-enough version.
+
 
 def check_mp4box_version():
     cmd_line = [MP4BOX, "-version"]
@@ -131,7 +132,8 @@ class DashOnDemandCreator(object):
         print result
 
     def create_mp4box_command(self, tracks, dur_ms):
-        parts = [MP4BOX, '-dash', str(dur_ms), '-profile', 'onDemand',
+        parts = [MP4BOX, '-dash', str(dur_ms), '-frag',
+                 str(dur_ms), '-profile', 'onDemand',
                  '-out', self.file_path(self.mpd_name)]
         for track in tracks['video']:
             parts.append('{0}.mp4:id={1}'.format(self.file_path(track), track))
@@ -152,10 +154,8 @@ class DashOnDemandCreator(object):
             sidx_ranges[track] = resegmenter.sidx_range
         return sidx_ranges
 
-    def fix_sidx_ranges(self, input_file, output, sidx_for_representations):
-        """ filter_mpd(input_file=some_input_filename, output=file_handler)
-            Parses mpd and replaces ranges for sidx boxes.
-        """
+    def _fix_sidx_ranges(self, input_file, output, sidx_for_representations):
+        "Filter input and replace ranges for sidx boxes."
 
         output_gen = saxutils.XMLGenerator(output, encoding='utf-8')
         parser = sax.make_parser()
@@ -166,17 +166,18 @@ class DashOnDemandCreator(object):
         sidx_filter.parse(input_file)
 
     def fix_sidx_ranges_in_mpd(self, mpd_file, sidx_ranges):
+        "Fix sidx ranges MPD file."
         output = StringIO()
         with open(mpd_file, 'rb') as ifh:
-            self.fix_sidx_ranges(ifh, output, sidx_ranges)
-        move_file_to_backup(mpd_file)
+            self._fix_sidx_ranges(ifh, output, sidx_ranges)
+        try:
+            make_backup(mpd_file)
+        except BackupError:
+            print("Backupfile already exists. Will not overwrite %s" %
+                  mpd_file)
+            return
         with open(mpd_file, 'wb') as ofh:
             ofh.write(output.getvalue())
-
-
-def move_file_to_backup(file_path):
-    backup_file = file_path + BACKUP_FILE_SUFFIX
-    os.rename(file_path, backup_file)
 
 
 def main():

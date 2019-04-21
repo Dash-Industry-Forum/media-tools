@@ -39,6 +39,7 @@ import os
 from os.path import normpath, splitext
 from os.path import join as pathjoin
 from os.path import split as pathsplit
+import sys
 import subprocess
 import time
 import json
@@ -58,33 +59,41 @@ VIDEO_FILTERS = {'deinterlace' : "yadif=0:-1:0",
                  'resolution' : "scale=%(resolution)s"}
 
 def make_x264_options(video_values):
-    """Make x264 options string from dictionary values (frameRate, vrate, gopLength, segmentDuration).
+    """Make x264 options string from dictionary values (frameRate, vrate, gopLength, segmentDurationMs).
 
     From these some extra values are calculated."""
     values = video_values.copy()
     values['vbv-maxrate'] = int(values['vrate']*1.15)
     values['vbv-bufsize'] = int(values['vrate']*values['segmentDurationMs']
                                 * 0.001)
-    options = ['-c:v libx264 -profile:v high -flags +cgop -r %(frameRate)d']
+    values['gopLength2'] = 2 * values['gopLength']
+    options = ['-c:v libx264 -profile:v high -flags +cgop -r %(frameRate).2f']
     # Note that bitrates are in kbps (with k = 1000)
+    options.append(' -force_key_frames "expr:eq(mod(n,%(gopLength)d),0)"')
     options.append(' -x264opts bitrate=%(vrate)d:vbv-maxrate=%(vbv-maxrate)d:vbv-bufsize=%(vbv-bufsize)d')
-    options.append(':scenecut=-1:keyint=%(gopLength)d:min-keyint=%(gopLength)d')
+    # options.append(':scenecut=-1:keyint=%(gopLength)d:min-keyint=%(gopLength)d')
+    options.append(':rc-lookahead=%(gopLength)d:keyint=%(gopLength2)d:min-keyint=%(gopLength)d')
     options.append(':force-cfr')
     out_string = "".join(options)
     return out_string % values
 
+
 def make_x265_options(video_values):
-    """Make x265 options string from dictionary values (frameRate, vrate, gopLength, segmentDuration).
+    """Make x265 options string from dictionary values (frameRate, vrate, gopLength, segmentDurationMs).
 
     From these some extra values are calculated."""
     values = video_values.copy()
     values['vbv-maxrate'] = int(values['vrate']*1.15)
-    values['vbv-bufsize'] = int(values['vrate']*values['segmentDuration'])
-    options = ['-c:v libx265 -preset medium -r %(frameRate)d']
+    values['vbv-bufsize'] = int(values['vrate']*values['segmentDurationMs']
+                                * 0.001)
+    values['gopLength2'] = 2 * values['gopLength']
+    options = ['-c:v libx265 -preset medium -r %(frameRate).2f']
     # Note that bitrates are in kbps (with k = 1000)
+    options.append(' -force_key_frames "expr:eq(mod(n,%(gopLength)d),0)"')
     options.append(' -x265-params bitrate=%(vrate)d:vbv-maxrate=%(vbv-maxrate)d:vbv-bufsize=%(vbv-bufsize)d')
-    options.append(':no-open-gop=1:no-scenecut=1:keyint=%(gopLength)d:min-keyint=%(gopLength)d')
-    #options.append(' -t 65')
+    # options.append(':no-open-gop=1:no-scenecut=1:keyint=%(gopLength)d:min-keyint=%(gopLength)d')
+    options.append(':rc-lookahead=%(gopLength)d:keyint=%(gopLength2)d:min-keyint=%(gopLength)d')
+    # options.append(' -t 65')
     out_string = "".join(options)
     return out_string % values
 
@@ -184,9 +193,9 @@ class BatchEncoder(object):
         open(job['lockFile'], "wb").write("running")
         proc = subprocess.Popen(cmd_line, shell=True, stdout=file_handle, stderr=file_handle)
         print ''
-        print "> %s" %cmd_line
-        self.processes.append((proc, job))
+        print "> %s" % cmd_line
         self.nr_jobs_started += 1
+        self.processes.append((proc, job, self.nr_jobs_started))
         print "Started job %d for %s with pid=%d" % (self.nr_jobs_started, job['outFile'], proc.pid)
 
     def create_cmd(self, job):
@@ -210,17 +219,23 @@ class BatchEncoder(object):
         while True:
             finished = []
             running_now = 00
-            for (proc, job) in self.processes:
+            for (proc, job, nr) in self.processes:
                 proc.poll()
                 if proc.returncode is not None:
-                    finished.append((proc, job))
+                    finished.append((proc, job, nr))
+                    if proc.returncode != 0:
+                        sys.stderr.write("Job %d with output file %s failed (%d)\n"
+                                         % (nr, job['outFile'], proc.returncode))
+                    else:
+                        print("Job %d with output file %s succeeded" %
+                              (nr, job['outFile']))
                 else:
                     running_now += 1
             if len(finished) > 0:
                 self.nr_jobs_done += 1
                 print "%d jobs done" % self.nr_jobs_done
                 for finished_job in finished:
-                    proc, job = finished_job
+                    proc, job, nr = finished_job
                     os.unlink(job['lockFile'])
                     self.processes.remove(finished_job)
             if running_now < self.max_procs:
@@ -253,7 +268,7 @@ def validate_framerate_gop_segment_duration(json_data):
         if remainder != 0:
             raise ValueError("For 29.97Hz video, only GoP durations nx30 are allowed")
         if seg_dur_ms != mul30 * 1001:
-            raise ValueError("Segment duration is not a multiple of 1001")
+            raise ValueError("Segment duration %d is not a multiple of 1001" % seg_dur_ms)
         return
     if is_close(frame_rate, 59.94):
         mul60, remainder = divmod(gop_length, 60)
@@ -261,7 +276,7 @@ def validate_framerate_gop_segment_duration(json_data):
             raise ValueError(
                 "For 59.94Hz video, only GoP durations nx60 are allowed")
         if seg_dur_ms != mul60 * 1001:
-            raise ValueError("Segment duration is not a multiple of 1001")
+            raise ValueError("Segment duration %d is not a multiple of 1001" % seg_dur_ms)
         return
     if frame_rate not in (24, 25, 30, 48, 50, 60):
         raise ValueError("Framerate %s not supported" % frame_rate)
@@ -281,7 +296,7 @@ def validate_audio_language(json_data):
     if len(language) != 3:
         raise ValueError("language must be set to 3-letter code for audio.")
     for c in language:
-        if ord(c) > ord('z') or ord(c) < ord('a'):
+        if not ord('a') <= ord(c) <= ord('z'):
             raise ValueError("language must be set to 3-letter code for audio.")
 
 

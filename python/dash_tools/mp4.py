@@ -1387,7 +1387,7 @@ class trun_box(full_box):
                       (self.has_sample_duration and 4) +
                       (self.has_sample_size and 4) +
                       (self.has_sample_flags and 4))
-            self.first_cto = struct.unpack_from('>I', self.fmap, offset)[0]
+            self.first_cto = struct.unpack_from('>i', self.fmap, offset)[0]  # Interpret as signed (works for version 0 (unsigned) as well)
 
         self.decoration += ' tdur:%d' % self.total_duration
 

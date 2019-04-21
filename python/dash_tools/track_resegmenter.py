@@ -36,11 +36,10 @@ import os
 from argparse import ArgumentParser
 from collections import namedtuple
 
-from structops import str_to_uint16, uint16_to_str, uint32_to_str
+from structops import str_to_uint16, uint16_to_str, uint32_to_str, sint32_to_str
 from structops import str_to_uint32, str_to_uint64, uint64_to_str
 from track_data_extractor import TrackDataExtractor
-
-BACKUP_FILE_SUFFIX = "_bup"
+from backup_handler import make_backup, BackupError
 
 SegmentData = namedtuple("SegmentData", "nr start dur size data")
 SegmentInfo = namedtuple("SegmentInfo", "start_nr end_nr start_time dur")
@@ -61,7 +60,6 @@ class TrackResegmenter(object):
 
     def resegment(self):
         "Resegment the track with new duration."
-
 
         self.input_parser = TrackDataExtractor(self.input_file,
                                                self.verbose)
@@ -90,7 +88,12 @@ class TrackResegmenter(object):
             segment_sizes.append(len(output_segment))
         if self.output_file:
             if self.output_file == self.input_file:
-                move_file_to_backup(self.input_file)
+                try:
+                    make_backup(self.input_file)
+                except BackupError:
+                    print("Backup file for %s already exists" %
+                          self.input_file)
+                    return
             with open(self.output_file, "wb") as ofh:
                 input_header_end = self.input_parser.find_header_end()
                 ofh.write(ip.data[:input_header_end])
@@ -249,7 +252,7 @@ class TrackResegmenter(object):
                 if sample_flags & pattern != 0:
                     nr_bytes += 4
             return nr_bytes
-        version = 0
+        version = 1  # Allow for signed cto
         ip = self.input_parser
         sample_data_size = nr_sample_bytes(self.sample_flags)
         sample_count = seg_info.end_nr - seg_info.start_nr
@@ -259,7 +262,7 @@ class TrackResegmenter(object):
         version_and_flags = (version << 24) | flags
         output += uint32_to_str(version_and_flags)
         output += uint32_to_str(sample_count)
-        output += uint32_to_str(offset + trun_size + 8) # 8 bytes into mdat
+        output += uint32_to_str(offset + trun_size + 8)  # 8 bytes into mdat
         for sample in ip.samples[seg_info.start_nr:seg_info.end_nr]:
             if self.sample_flags & 0x100:
                 output += uint32_to_str(sample.dur)
@@ -268,13 +271,8 @@ class TrackResegmenter(object):
             if self.sample_flags & 0x400:
                 output += uint32_to_str(sample.flags)
             if self.sample_flags & 0x800:
-                output += uint32_to_str(sample.cto)
+                output += sint32_to_str(sample.cto)
         return output
-
-
-def move_file_to_backup(file_path):
-    backup_file = file_path + BACKUP_FILE_SUFFIX
-    os.rename(file_path, backup_file)
 
 
 def main():
@@ -316,6 +314,7 @@ def main():
                                    args.output_file, args.skip_sidx,
                                    args.verbose)
     resegmenter.resegment()
+
 
 if __name__ == "__main__":
     main()

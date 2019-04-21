@@ -117,15 +117,22 @@ class Fetcher(object):
         availability_start_time = self.mpd.availabilityStartTime
         fetches = []
         period_start = availability_start_time + self.mpd.periods[0].start
+        print("Period Start %s" % period_start)
         for adaptation_set in self.mpd.periods[0].adaptation_sets:
             if self.verbose:
                 print adaptation_set
             for rep in adaptation_set.representations:
                 init = adaptation_set.initialization.replace("$RepresentationID$", rep.id)
                 media = adaptation_set.media.replace("$RepresentationID$", rep.id)
-                rep_data = {'init' : init, 'media' : media, 'duration' : adaptation_set.duration,
-                            'startNr' : adaptation_set.startNumber, 'periodStart' : period_start,
-                            'base_url' : self.base_url, 'id' : rep.id}
+                rep_data = {'init' : init, 'media' : media,
+                            'duration' : adaptation_set.duration,
+                            'timescale' : adaptation_set.timescale,
+                            'dur_s' : (adaptation_set.duration * 1.0 /
+                                       adaptation_set.timescale),
+                            'startNr' : adaptation_set.startNumber,
+                            'periodStart' : period_start,
+                            'base_url' : self.base_url,
+                            'id' : rep.id}
                 fetches.append(rep_data)
         self.fetches = fetches
 
@@ -177,11 +184,11 @@ class FetchThread(Thread):
 
     def current_number(self, now):
         "Calculate the current segment number."
-        return int((now - self.fetch['periodStart']) / self.fetch['duration'] + self.fetch['startNr'] - 1)
+        return int((now - self.fetch['periodStart']) / self.fetch['dur_s'] + self.fetch['startNr'] - 1)
 
     def time_for_number(self, number):
         "Calculate the time for a specific segment number."
-        return (number - self.fetch['startNr'] - 1) * self.fetch['duration'] + self.fetch['periodStart']
+        return (number - self.fetch['startNr'] - 1) * self.fetch['dur_s'] + self.fetch['periodStart']
 
     def spec_media(self, number):
         "Return specific media path element."
@@ -208,7 +215,7 @@ class FetchThread(Thread):
             now = time.time()
             number = self.current_number(now)
             if last_number is not None and number - last_number > 1:
-                if (now-self.time_for_number(last_number)) < 2*self.fetch['duration']:
+                if (now-self.time_for_number(last_number)) < 2*self.fetch['dur_s']:
                     number = last_number + 1
             if number != last_number:
                 # Fetch media
@@ -216,7 +223,7 @@ class FetchThread(Thread):
                 self.store_segment(data, number)
                 last_number = number
                 nr_fetched += 1
-            time.sleep(self.fetch['duration'] * 0.25)
+            time.sleep(self.fetch['dur_s'] * 0.25)
             if self.nr_segment_to_fetch > 0 and nr_fetched >= self.nr_segment_to_fetch:
                 if self.parent:
                     self.parent.stop()

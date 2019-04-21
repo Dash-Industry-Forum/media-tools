@@ -21,6 +21,9 @@ Major tools
 **dash-ondemand-verifier**  (dash_tools.ondemand_verifier)
     * Performs checks on (trees of) DASH OnDemand asset and reports issues
 
+**dash-ondemand-add-subtitles** (dash_tools.ondemand_add_subs)
+    * Add subtitle adaptation sets for side-loaded files to a DASH MPD
+
 **dash-livedownloader**  (dash_tools.livedownloader)
     * Downloads a live DASH asset and stores on disk. Only supports
       $Number$-template

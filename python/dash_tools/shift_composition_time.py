@@ -1,10 +1,11 @@
-"""Simple struct operations to pack and unpack numbers to strings."""
+#!/usr/bin/env python
+"""Shift composition_times in trun to align presentation and decode time."""
 
 # The copyright in this software is being made available under the BSD License,
 # included below. This software may be subject to other third party and contributor
 # rights, including patent rights, and no such rights are granted under this license.
 #
-# Copyright (c) 2016, Dash Industry Forum.
+# Copyright (c) 2019, Dash Industry Forum.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without modification,
@@ -29,44 +30,51 @@
 #  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 #  POSSIBILITY OF SUCH DAMAGE.
 
-from struct import pack, unpack
+import os
+import shutil
+from argparse import ArgumentParser
+
+from mp4filter import ShiftCompositionTimeOffset
+from backup_handler import make_backup, BackupError
 
 
-def str_to_uint16(string2):
-    "2-character string to unsigned int16."
-    return unpack(">H", string2)[0]
+def process_files(files):
+    for f in files:
+        f_backup = f + '_bup'
+        if os.path.exists(f_backup):
+            print("%s already exists, will not process %s" %
+                  (f_backup, f))
+            continue
+        sto = ShiftCompositionTimeOffset(f)
+        output = sto.filter_top_boxes()
+        input = open(f, 'rb').read()
+        if output != input:
+            assert len(output) == len(input)
+            print("Change in file %s. Make backup %s" % (f, f_backup))
+            try:
+                make_backup(f)
+            except BackupError:
+                print("Cannot make backup for %s. Skipping it" % f)
+                return
+            with open(f, 'wb') as ofh:
+                ofh.write(output)
 
 
-def str_to_uint32(string4):
-    "4-character string to unsigned int32."
-    return unpack(">I", string4)[0]
+def main():
+    "Shift presentation time to decode time, and make backup of old file."
+    parser = ArgumentParser(usage='Shift presentation time to decode time in trun')
+
+    parser.add_argument('files', metavar='N', type=str, nargs='+',
+                        help = 'files to be changed')
+
+    args = parser.parse_args()
+
+    if len(args.files) < 1:
+        parser.error("Need at least one file")
+        sys.exit(1)
+
+    process_files(args.files)
 
 
-def str_to_sint32(string4):
-    "4-character string to signed int32."
-    return unpack(">i", string4)[0]
-
-
-def str_to_uint64(string8):
-    "8-character string to unsigned int64."
-    return unpack(">Q", string8)[0]
-
-
-def uint16_to_str(uint16):
-    "Unsigned int16 to string."
-    return pack(">H", uint16)
-
-
-def uint32_to_str(uint32):
-    "Unsigned int32 to string."
-    return pack(">I", uint32)
-
-
-def sint32_to_str(sint32):
-    "Signed int32 to string."
-    return pack(">i", sint32)
-
-
-def uint64_to_str(uint64):
-    "Unsigned int64 to string."
-    return pack(">Q", uint64)
+if __name__ == "__main__":
+    main()

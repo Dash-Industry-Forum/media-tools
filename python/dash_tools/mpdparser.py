@@ -56,12 +56,14 @@ class MpdObject(object):
         value = self.node.attrib.get(name, None)
         self.__dict__[name] = value
 
-    def get_int_attribute(self, name):
+    def get_int_attribute(self, name, default_value=None):
         "Get int attribute to __dict__."
         self.attribs.append(name)
         value = self.node.attrib.get(name, None)
         if value is not None:
             value = int(value)
+        else:
+            value = default_value
         self.__dict__[name] = value
 
     def get_date_attribute(self, name):
@@ -153,7 +155,8 @@ class SegmentTemplate(MpdObject):
 
     def parse(self):
         self.get_int_attribute('duration')
-        self.get_int_attribute('startNumber')
+        self.get_int_attribute('timescale', 1)
+        self.get_int_attribute('startNumber', 1)
         self.get_text_attribute('media')
         self.get_text_attribute('initialization')
 
