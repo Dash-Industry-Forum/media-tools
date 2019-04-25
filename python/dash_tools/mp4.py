@@ -854,7 +854,8 @@ class dec3_box(box):
         self.data_rate = (ord(self.dec_info[0]) << 5) + ((ord(self.dec_info[1]) >> 3) & 0x1f)
         self.num_ind_sub = ord(self.dec_info[1]) & 0x7
 
-        # NOTE: currently only parsing the first dependent substream
+        # NOTE: The first IN-dependent substream is parsed.
+        #       Dependent sub streams, as indicated by num_dep_sub > 0 are not parsed.
         self.fscod = (ord(self.dec_info[2]) >> 6) & 0x3
         bsid = (ord(self.dec_info[2]) >> 1) & 0x1f
         asvc = (ord(self.dec_info[3]) >> 7) & 0x1
@@ -862,6 +863,10 @@ class dec3_box(box):
         self.acmod = (ord(self.dec_info[3]) >> 1) & 0x7
         lfeon = ord(self.dec_info[3]) & 0x1
         num_dep_sub = (ord(self.dec_info[4]) >> 1) & 0xf
+        if num_dep_sub > 0:
+            chan_loc = ((ord(self.dec_info[4]) & 0x1) << 8) + ord(self.dec_info[5])
+        else:
+            reserved = ord(self.dec_info[4]) & 0x1
 
         self.decoration = 'dec_info={0} data_rate={1} num_ind_sub={2} fscod={3} acmod={4}'.format(
             self.dec_info_hex, self.data_rate, self.num_ind_sub, self.fscod, self.acmod)
