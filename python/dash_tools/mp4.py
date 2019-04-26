@@ -217,7 +217,7 @@ class box(object):
         next_offset = self.childpos
         end_offset = self.offset + self.size
 
-        while True:
+        while next_offset < end_offset:
             box_class = box
             size, box_type = struct.unpack('>i4s', self.fmap[next_offset:next_offset+8])
 
@@ -258,8 +258,6 @@ class box(object):
                 if stop(new_box):
                     return
 
-            if next_offset >= end_offset:
-                break
 
     def description(self):
         ret = '\'%s\' [%d:%d] %s\n' % (self.type, self.offset, self.size, \
@@ -837,20 +835,41 @@ class ec_3_box(SampleEntry):
         return self.offset+36
 
 
-class dac3_box(SampleEntry):
+class dac3_box(box):
     def __init__(self, *args):
-        SampleEntry.__init__(self, *args)
+        box.__init__(self, *args)
         self.dec_info = self.fmap[self.offset+8:self.offset+self.size]
         self.dec_info_hex = ''.join(['%02x' % ord(c) for c in self.dec_info])
         self.decoration = 'dec_info={0}'.format(self.dec_info_hex)
 
 
-class dec3_box(SampleEntry):
+class dec3_box(box):
     def __init__(self, *args):
-        SampleEntry.__init__(self, *args)
+        box.__init__(self, *args)
         self.dec_info = self.fmap[self.offset+8:self.offset+self.size]
         self.dec_info_hex = ''.join(['%02x' % ord(c) for c in self.dec_info])
-        self.decoration = 'dec_info={0}'.format(self.dec_info_hex)
+
+        # https://www.etsi.org/deliver/etsi_ts/102300_102399/102366/01.03.01_60/ts_102366v010301p.pdf
+        # EC3SpecificBox F.6.1 page 202
+        self.data_rate = (ord(self.dec_info[0]) << 5) + ((ord(self.dec_info[1]) >> 3) & 0x1f)
+        self.num_ind_sub = ord(self.dec_info[1]) & 0x7
+
+        # NOTE: The first IN-dependent substream is parsed.
+        #       Dependent sub streams, as indicated by num_dep_sub > 0 are not parsed.
+        self.fscod = (ord(self.dec_info[2]) >> 6) & 0x3
+        bsid = (ord(self.dec_info[2]) >> 1) & 0x1f
+        asvc = (ord(self.dec_info[3]) >> 7) & 0x1
+        bsmod = (ord(self.dec_info[3]) >> 4) & 0x7
+        self.acmod = (ord(self.dec_info[3]) >> 1) & 0x7
+        lfeon = ord(self.dec_info[3]) & 0x1
+        num_dep_sub = (ord(self.dec_info[4]) >> 1) & 0xf
+        if num_dep_sub > 0:
+            chan_loc = ((ord(self.dec_info[4]) & 0x1) << 8) + ord(self.dec_info[5])
+        else:
+            reserved = ord(self.dec_info[4]) & 0x1
+
+        self.decoration = 'dec_info={0} data_rate={1} num_ind_sub={2} fscod={3} acmod={4}'.format(
+            self.dec_info_hex, self.data_rate, self.num_ind_sub, self.fscod, self.acmod)
 
 
 class enca_box(mp4a_box):
