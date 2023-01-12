@@ -1,0 +1,15 @@
+00:00:00:00
+# > is command
+# RCL = Resume Caption Loading (selects POP-ON)
+# ENM = Erase Non-Displaced Memory
+# EDM = Erase Displaced Memory
+# PAC = Preamble Address code
+# EOC = END of Caption. Will display caption
+> RCL ENM PAC_1_white
+eng: 00:00:00:00
+> EDM EOC
+# Next second
+00:00:01:00
+> RCL ENM PAC_2_green
+eng: 00:00:01:00
+> EDM EOC
