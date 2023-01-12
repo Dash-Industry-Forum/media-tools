@@ -63,10 +63,10 @@ class Logger(object):
         try:
             minimal_level = self.verbose_filter[severity]
         except KeyError:
-            print "WARNING: Severity %s not defined" % severity
+            print("WARNING: Severity %s not defined" % severity)
         else:
             if self.verbose_level >= minimal_level:
-                print "%s [%s] %s" % (self.time, severity, msg)
+                print("%s [%s] %s" % (self.time, severity, msg))
 
 
 # Here comes the global logger instance
@@ -511,7 +511,7 @@ class Cea608Channel(object):
     def set_mode(self, new_mode):
         "Set the CC mode."
         if not new_mode in self.modes:
-            raise KeyError, "Mode %s not supported!"
+            raise KeyError("Mode %s not supported!" % new_mode)
         logger.log("INFO", "MODE=%s" % new_mode)
         if new_mode == self.mode:
             return

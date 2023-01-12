@@ -90,7 +90,7 @@ class Assembler(object):
         if line[0] == "#": # Comment
             return
         time_parts = line.split(":")
-        if len(time_parts) == 4:
+        if len(time_parts) == 4 and len(time_parts[0]) == 2:
             self.handle_dangling_char()
             self.time = line
             self.ofh.write("\n\n%s" % self.time)
@@ -152,7 +152,8 @@ class Assembler(object):
                     byte2_offset = 0x10 + indent_amount/2 + underline
                     code = (pac_code[0], pac_code[1] + byte2_offset)
                     if self.verbose_level > 0:
-                        print "PAC_code for row=%d indent=%d underline=%d (%02x, %02x)" % (line_nr, indent_amount, underline, code[0], code[1])
+                        print("PAC_code for row=%d indent=%d underline=%d (%02x, %02x)" %
+                              (line_nr, indent_amount, underline, code[0], code[1]))
                 else:
                     # Pattern is PAC_color or PAC_color_u
                     try:
@@ -163,7 +164,8 @@ class Assembler(object):
                     byte2_offset = color_code + underline
                     code = (pac_code[0], pac_code[1] + byte2_offset)
                     if self.verbose_level > 0:
-                        print "PAC_code for row=%d color=%s underline=%d (%02x, %02x)" % (line_nr, color, underline, code[0], code[1])
+                        print("PAC_code for row=%d color=%s underline=%d (%02x, %02x)" %
+                              (line_nr, color, underline, code[0], code[1]))
         elif part.startswith("MID"):
             # Pattern is MID_color or MID_color_u
             parts = part.split("_")
@@ -175,7 +177,8 @@ class Assembler(object):
             underline = len(parts) > 2 and 1 or 0
             code = (0x11, color_code + underline)
             if self.verbose_level > 0:
-                print "MIDROW color=%s underline=%d (%02x, %02x)" % (color, underline, code[0], code[1])
+                print("MIDROW color=%s underline=%d (%02x, %02x)" %
+                      (color, underline, code[0], code[1]))
         elif part.startswith("BKG"):
             parts = part.split("_")
             color = parts[1]
@@ -273,7 +276,8 @@ def cmd_line():
     from optparse import OptionParser
 
     parser = OptionParser(usage="%prog [options] file.ccs", description="Create .scc file from .css input file")
-    parser.add_option('-v', '--verbosity', help='verbosity level [default: %default]', type='int', action='store', default=0, dest='verbosity_level')
+    parser.add_option('-v', '--verbosity', help='verbosity level [default: %default]',
+        type='int', action='store', default=0, dest='verbosity_level')
     (opts, args) = parser.parse_args()
     if len(args) != 1:
         parser.print_help()
