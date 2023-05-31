@@ -72,7 +72,7 @@ function handleFile(evt, files)
 function displayError(msg)
 {
     var messages = document.getElementById('messages')
-    
+
     var div = document.createElement('div');
     div.style.color='red';
     $(div).append(document.createTextNode(msg));
@@ -276,6 +276,8 @@ function trim1(str)
 
 var boxData;
 
+var defaultIvSize = 8;
+
 function getUint64(data, offset){
     var dat = data.getUTF8String(offset, 8);
     var str = '0x' + binStringToHex2(dat);
@@ -324,7 +326,7 @@ function parseBoxes(dataView, offset, size, jsonData, indent)
                 // No box found at the start, probably garbage input.
                 return 0;
             }
-            
+
             console.log("Bad box len for " + typeStr + "... The file may be truncated.");
             console.log("Original box len: " + len + "(0x" + len.toString(16) + ")");
             len = size - offset;  // adjusting the len to finish parsing with error message on the console
@@ -337,7 +339,7 @@ function parseBoxes(dataView, offset, size, jsonData, indent)
                 // No box found at the start, probably garbage input.
                 return 0;
             }
-            
+
             console.log("Zero box len for " + typeStr + ', offset = 0x' + offset.toString(16) + '(' + offset + ')');
         }
 
@@ -1413,7 +1415,8 @@ function box_tenc(data, offset, len) {
 
     x += 2; // Skip 2 bytes
     boxContent['Is encrypted'] = data.getUint8(x); x += 1;
-    boxContent['Default IV size'] = data.getUint8(x); x += 1;
+    defaultIvSize = data.getUint8(x); x += 1;
+    boxContent['Default IV size'] = defaultIvSize;
     boxContent['Key identifier'] = '0x' + binStringToHex2(data.getUTF8String(x, 16)); x += 16;
 
     return {
@@ -1477,6 +1480,57 @@ function box_saio(data, offset, len) {
             'childOffset': offset
     };
 }
+
+function box_senc(data, offset, len) {
+    var boxContent = {};
+    var x = offset;
+    var v = data.getUint8(x);
+    boxContent['Box version'] = v;
+    var ivSize = defaultIvSize;
+    var f = (data.getUint8(x + 1) << 16) + (data.getUint8(x + 2) << 8) + (data.getUint8(x + 3) << 0);
+    x += 4;
+    boxContent['Box flags'] = '0x' + f.toString(16);
+    var sampleCount = data.getUint32(x);
+    boxContent['sample count'] = sampleCount;
+    x+= 4;
+    //if mp4 data lacks of Init segment this might be cbcs and we need heuristics to check if ivSize should be 0
+    var sc = sampleCount * (ivSize + 2 + 2 + 4);
+    if (sc > len) {
+        ivSize = 0;
+        boxContent['calculated ivSize'] = ivSize;
+    }
+    boxContent.Entries = new Array();
+
+    for (var i = 0; i < sampleCount; ++i)
+    {
+        var iv = '';
+        if (ivSize)
+        {
+            iv = binStringToHex2(data.getUTF8String(x, ivSize));
+        }
+        x += ivSize;
+        var entry = {};
+        entry['iv'] = iv;
+        if (f & 0x02)
+        {
+            entry.Entries = new Array();
+            var subsampleCount = data.getUint16(x); x+= 2;
+            for (var j = 0; j < subsampleCount; ++j)
+            {
+                var clearData = data.getUint16(x); x+= 2;
+                var encData = data.getUint32(x); x+= 4;
+                var msg = 'clear_data=' + clearData.toString() + ', encrypted_data=' + encData.toString();
+                entry.Entries.push(msg);
+            }
+        }
+        boxContent.Entries.push(entry);
+    }
+
+    return {'boxContent': boxContent,
+        'childOffset': offset
+    };
+}
+
 
 function box_sbgp(data, offset, len) {
     var boxContent = {};
@@ -1632,7 +1686,7 @@ function box_uuid(data, offset, len) {
     else if (uuid == gSampleEncryptionGuid)
     {
         boxContent['box_type'] = 'PIFF SampleEncryption'
-        var ivSize = 8;
+        var ivSize = defaultIvSize;
         if (f & 0x01)
         {
             var alg = (data.getUint8(x) << 16) + (data.getUint8(x + 1) << 8) + (data.getUint8(x + 2) << 0);
