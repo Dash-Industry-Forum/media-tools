@@ -969,7 +969,7 @@ function box_sidx(data, offset, len) {
         entry['subsegment_duration'] = data.getUint32(x); x += 4;
         fourBytes = data.getUint32(x); x += 4;
         entry['starts_with_SAP'] = (fourBytes >> 31) & 1;
-        entry['SAP_type'] = (fourBytes >> 29) & 7;
+        entry['SAP_type'] = (fourBytes >> 28) & 7;
         entry['SAP_delta_time'] = (fourBytes & 0x0fffffff);
         boxContent.Entries.push(entry);
     }
